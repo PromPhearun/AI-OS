@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node / UI
+node_modules/
+dist/
+build/
+.vite/
+
+# AI OS runtime data
+aios-data/
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Secrets
+*.key
+*.pem
+credentials
+.env
+.env.*
