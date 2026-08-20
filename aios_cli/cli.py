@@ -1,9 +1,10 @@
-"""aios CLI — Phase 1 control surface.
+"""aios CLI — control surface.
 
 Subcommands:
     aios --version
     aios demo                    run the two example agents + ps-style table
     aios run SPEC [SPEC...]      run agents from spec files (see --agents-module)
+    aios resume                  restore the last session's agents (--resume boot path)
 """
 
 from __future__ import annotations
@@ -59,17 +60,31 @@ async def _run(kernel, paths: list[str], agents_module: str | None, timeout: flo
     _print_table(summaries)
 
 
+async def _resume(kernel, agents_module: str | None, timeout: float | None) -> None:
+    from aios_sdk.control import ControlPlane
+
+    _load_agents_module(agents_module)
+    summaries = await ControlPlane(kernel).resume_session(timeout=timeout)
+    _print_table(summaries)
+
+
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="aios", description="AI OS — Phase 1 MVP kernel")
+    parser = argparse.ArgumentParser(prog="aios", description="AI OS — multi-agent kernel")
     parser.add_argument("--version", action="store_true", help="print version and exit")
     sub = parser.add_subparsers(dest="command")
 
-    sub.add_parser("demo", help="run the bundled example agents")
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--data-root", default=None, help="data root directory (default: aios-data)")
+    common.add_argument("--timeout", type=float, default=None, help="per-agent wait timeout (s)")
 
-    run = sub.add_parser("run", help="run agents from spec files")
+    sub.add_parser("demo", parents=[common], help="run the bundled example agents")
+
+    run = sub.add_parser("run", parents=[common], help="run agents from spec files")
     run.add_argument("specs", nargs="+", help="paths to agent spec JSON files")
     run.add_argument("--agents-module", default=None, help="module that registers @agent definitions")
-    run.add_argument("--timeout", type=float, default=None, help="per-agent wait timeout (s)")
+
+    resume = sub.add_parser("resume", parents=[common], help="resume the last session (--resume boot path)")
+    resume.add_argument("--agents-module", default=None, help="module that registers @agent definitions")
 
     args = parser.parse_args(argv)
 
@@ -78,12 +93,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     async def _main():
-        kernel = Kernel()
+        kernel = Kernel(data_root=args.data_root)
         try:
             if args.command == "demo":
                 await _demo(kernel)
             elif args.command == "run":
                 await _run(kernel, args.specs, args.agents_module, args.timeout)
+            elif args.command == "resume":
+                await _resume(kernel, args.agents_module, args.timeout)
             return 0
         finally:
             await kernel.shutdown()

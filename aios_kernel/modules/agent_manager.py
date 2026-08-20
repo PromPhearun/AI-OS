@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import time
 
-from ..acb import AgentControlBlock, AgentState, Budgets
+from ..acb import AgentControlBlock, AgentState, Budgets, Usage
 from ..errors import AiosError, E_INVAL, E_NOENT, E_STATE
 from ..lifecycle import transition
 from ..specs import validate_spec
@@ -91,6 +91,44 @@ class AgentManager:
             self._tasks[pid] = asyncio.create_task(self._run_agent(pid, runner_factory))
         return pid
 
+    # ---------------------------------------------------------------- --resume
+    def restore_from_manifest(self, record: dict) -> int:
+        """--resume boot path: rebuild a SUSPENDED ACB from a session record.
+
+        PID uniqueness is preserved (kernel invariant #1): ``_next_pid`` is
+        bumped past every restored pid so fresh spawns never collide with
+        restored agents.
+        """
+        spec = record["spec"]
+        pid = int(record["pid"])
+        if pid in self._table:
+            raise AiosError(E_STATE, f"pid {pid} is already in the process table")
+        acb = AgentControlBlock(
+            pid=pid,
+            spec=spec,
+            state=AgentState.SUSPENDED,
+            priority=int(record.get("priority", 0)),
+            parent_pid=record.get("parent_pid"),
+            group_id=record.get("group_id", "default"),
+            created_at=float(record.get("created_at", time.time())),
+            started_at=record.get("started_at"),
+            exit_status=record.get("exit_status"),
+            exit_message=record.get("exit_message"),
+            checkpoint_id=record.get("checkpoint_id"),
+            budgets=Budgets.from_ckpt_dict(record.get("budgets", {})),
+            usage=Usage.from_ckpt_dict(record.get("usage", {})),
+        )
+        acb.workspace = self.kernel.workspaces.create(pid)
+        self._table[pid] = acb
+        self._exit_events[pid] = asyncio.Event()
+        self.kernel.context.create(pid, system=spec.get("llm", {}).get("system"))
+        self.kernel.memory.create_namespace(pid)
+        self.kernel.agent_logs[pid] = []
+        if pid >= self._next_pid:
+            self._next_pid = pid + 1
+        self.kernel.audit.record("session.restore", pid=pid, checkpoint=acb.checkpoint_id)
+        return pid
+
     # ------------------------------------------------------------------- run
     async def _run_agent(self, pid: int, runner_factory) -> None:
         try:
@@ -123,6 +161,7 @@ class AgentManager:
         if acb is None:
             return
         self._reaped[pid] = acb.to_dict()  # keep a tombstone for ps/logs
+        self.kernel.storage.remove_session_record(pid)
         self.kernel.scheduler.remove(pid)
         self.kernel.context.free(pid)
         self.kernel.memory.free(pid)
@@ -147,6 +186,7 @@ class AgentManager:
             return
         self.kernel.scheduler.remove(pid)
         transition(acb, AgentState.TERMINATED, "exit")
+        self.kernel.storage.remove_session_record(pid)
         self.kernel.audit.record(
             "agent.exit",
             pid=pid,
@@ -167,8 +207,14 @@ class AgentManager:
         self.kernel.audit.record("agent.kill", pid=pid, reason=reason)
         self._drop(pid)
 
-    async def resume(self, pid: int) -> dict:
-        """Resume a SUSPENDED agent from its checkpoint."""
+    async def resume(self, pid: int, runner_factory: callable | None = None) -> dict:
+        """Resume a SUSPENDED agent from its checkpoint.
+
+        ``runner_factory`` re-attaches an SDK runner after a ``--resume`` restart
+        (runner closures do not survive a restart; the SDK resolves the entry
+        from AGENT_REGISTRY by spec name). Omitting it keeps the original
+        factory for in-kernel resumes.
+        """
         acb = self.get(pid)
         if acb.state is not AgentState.SUSPENDED:
             raise AiosError(
@@ -184,9 +230,10 @@ class AgentManager:
         transition(acb, AgentState.READY, "resume")
         self.kernel.scheduler.add_ready(pid)
 
-        factory = self._runner_factories.get(pid)
+        factory = runner_factory or self._runner_factories.get(pid)
         if factory is None:
             raise AiosError(E_INVAL, f"cannot resume {pid}: no runner factory")
+        self._runner_factories[pid] = factory
         self._tasks[pid] = asyncio.create_task(self._run_agent(pid, factory))
         self.kernel.audit.record("agent.resume", pid=pid, checkpoint=ckpt_id)
         return {"ok": True}

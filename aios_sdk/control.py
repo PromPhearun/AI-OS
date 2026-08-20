@@ -6,7 +6,7 @@ import asyncio
 
 from aios_kernel.errors import AiosError, E_NOENT
 
-from .agent import AGENT_REGISTRY, AgentRunner
+from .agent import AGENT_REGISTRY, AgentRunner, RunSummary, summary_from_record
 
 PENDING = "pending"
 
@@ -45,8 +45,30 @@ class ControlPlane:
     async def suspend(self, pid: int, reason: str = "operator") -> dict:
         return await self.kernel.scheduler.suspend(pid, reason)
 
-    async def resume(self, pid: int) -> dict:
-        return await self.kernel.agent_manager.resume(pid)
+    async def resume(self, pid: int, runner_factory=None) -> dict:
+        return await self.kernel.agent_manager.resume(pid, runner_factory=runner_factory)
+
+    async def resume_session(self, timeout: float | None = None) -> list[RunSummary]:
+        """--resume: restore every suspended agent from disk, re-attach
+        runners (resolved from AGENT_REGISTRY by spec name), and run them.
+
+        Agents whose budget is still exhausted are re-suspended by the
+        scheduler with a fresh checkpoint — that is expected and observable.
+        """
+        pids = self.kernel.restore_session()
+        summaries = []
+        for pid in pids:
+            acb = self.kernel.agent_manager.get(pid)
+            name = acb.spec["name"]
+            definition = AGENT_REGISTRY.get(name)
+            if definition is None:
+                raise AiosError(E_NOENT, f"no @agent registered for spec name '{name}'")
+            turn_fn = definition["turn"]
+            factory = lambda pid: AgentRunner(self.kernel, pid, turn_fn).run()
+            await self.kernel.agent_manager.resume(pid, runner_factory=factory)
+            await self.kernel.agent_manager.wait_task(pid, timeout=timeout)
+            summaries.append(summary_from_record(self.kernel.agent_manager.record(pid)))
+        return summaries
 
     async def kill(self, pid: int, reason: str = "killed by operator") -> None:
         self.kernel.agent_manager.kill(pid, reason=reason)

@@ -101,6 +101,21 @@ class RunSummary:
         }
 
 
+def summary_from_record(rec: dict) -> RunSummary:
+    """Build a RunSummary from an ACB record / reaped tombstone."""
+    return RunSummary(
+        pid=rec["pid"],
+        name=rec["name"],
+        state=rec["state"],
+        exit_status=rec["exit_status"],
+        exit_message=rec["exit_message"],
+        turns=rec["usage"]["turns"],
+        tokens=rec["usage"]["total_tokens"],
+        cost_usd=rec["usage"]["cost_usd"],
+        tool_calls=rec["usage"]["tool_calls"],
+    )
+
+
 async def run_agents(kernel, specs: list[dict], *, timeout: float | None = None) -> list[RunSummary]:
     """Spawn every spec (entries resolved from AGENT_REGISTRY) and wait.
 
@@ -117,19 +132,7 @@ async def run_agents(kernel, specs: list[dict], *, timeout: float | None = None)
     for pid in pids:
         await kernel.agent_manager.wait_task(pid, timeout=timeout)
         rec = kernel.agent_manager.record(pid)
-        summaries.append(
-            RunSummary(
-                pid=pid,
-                name=rec["name"],
-                state=rec["state"],
-                exit_status=rec["exit_status"],
-                exit_message=rec["exit_message"],
-                turns=rec["usage"]["turns"],
-                tokens=rec["usage"]["total_tokens"],
-                cost_usd=rec["usage"]["cost_usd"],
-                tool_calls=rec["usage"]["tool_calls"],
-            )
-        )
+        summaries.append(summary_from_record(rec))
     return summaries
 
 

@@ -23,6 +23,16 @@ class Message:
     def to_dict(self) -> dict:
         return {"role": self.role, "content": self.content, "pinned": self.pinned}
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "Message":
+        """Rebuild a Message from a checkpointed (or metadata-bearing) dict."""
+        return cls(
+            d["role"],
+            d["content"],
+            pinned=bool(d.get("pinned", False)),
+            meta=dict(d.get("meta", {})),
+        )
+
 
 class ContextManager:
     def __init__(self, kernel=None):

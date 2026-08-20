@@ -11,8 +11,13 @@ a classic OS manages processes, but for the agent era.
 
 **Phase 1 — MVP Kernel implemented.** Agent lifecycle, syscall ABI, agent scheduler,
 LLM core (mock + OpenAI-compatible backend), in-memory context/memory, 3 built-in
-tools (`fs.read`, `fs.write`, `shell.run`), audit log, and a working CLI. See
-[`docs/11-roadmap.md`](docs/11-roadmap.md) for the phased plan.
+tools (`fs.read`, `fs.write`, `shell.run`), audit log, and a working CLI.
+
+**Phase 2 — durable checkpoints + `--resume` boot path implemented.** Checkpoints
+are written to disk (sha256-verified snapshot + manifest, committed before ack), a
+session manifest (`aios-data/session.json`) records every suspended agent, and
+`aios resume` rebuilds a crashed kernel's agents at their last committed checkpoint.
+See [`docs/11-roadmap.md`](docs/11-roadmap.md) for the phased plan.
 
 ## Quickstart
 
@@ -44,7 +49,7 @@ PID  NAME             STATE       EXIT     TURNS  TOKENS      COST TOOLCALLS
   memory / workspace / storage / vault managers, audit log.
 - **SDK** (`aios_sdk/`) — the only library agents import: `@agent` decorator, `AgentSession`
   syscall client, `ControlPlane` for launch/supervise, `run_agents` launcher.
-- **CLI** (`aios_cli/`) — `aios demo` and `aios run` control surface.
+- **CLI** (`aios_cli/`) — `aios demo`, `aios run`, and `aios resume` control surface.
 
 The design specification (15 documents, ~1,900 lines):
 
@@ -78,9 +83,9 @@ docs/11-roadmap.md   # how we'll build it
 
 ## Next Step
 
-**Phase 1 exit criteria are met** (two agents run concurrently with budgets, checkpoint/resume
-works, tool grants are deny-by-default, the audit log records every syscall). Phase 2 — State &
-Memory (on-disk checkpoints, IPC, semantic FS) begins per
+**Slice 2.1 of Phase 2 — State & Memory is delivered** (durable on-disk checkpoints with sha256
+integrity verification, the `--resume` boot path, and the session manifest). Remaining Phase 2
+slices — IPC (mailboxes, handoffs, `join`) and semantic FS (`fs_search`) — land next, per
 [`docs/11-roadmap.md`](docs/11-roadmap.md).
 
 ---

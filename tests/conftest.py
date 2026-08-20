@@ -42,8 +42,7 @@ async def kernel(tmp_path, monkeypatch):
     """A fresh Kernel with per-test data dirs and a disabled LLM backend."""
     monkeypatch.setenv("AIOS_AUDIT_PATH", str(tmp_path / "audit.jsonl"))
     k = Kernel(
-        audit_path=str(tmp_path / "audit.jsonl"),
-        workspace_root=str(tmp_path / "workspaces"),
+        data_root=str(tmp_path),
         llm_backend=MockLLM(mode="echo"),
     )
     yield k

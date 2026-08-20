@@ -40,6 +40,11 @@ aios-data/
 
 ## 3. Checkpoints (syscalls 6, 7, 25)
 
+> **Phase 2 status — Slice 2.1:** implemented on-disk layout
+> (`<root>/checkpoints/<id>/snapshot.json` + `manifest.json` with `hash`/`committed`,
+> sha256-verified on restore) plus `aios-data/session.json`, the atomic resume set
+> that powers `aios resume`.
+
 A checkpoint is the **unit of resumability**:
 
 ```jsonc

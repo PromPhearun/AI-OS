@@ -46,6 +46,20 @@ class Budgets:
             "max_turns": self.max_turns,
         }
 
+    def to_ckpt_dict(self) -> dict:
+        """Full serialization for durable checkpoints (superset of ``to_dict``)."""
+        return self.to_dict()
+
+    @classmethod
+    def from_ckpt_dict(cls, d: dict) -> "Budgets":
+        return cls(
+            tokens_per_min=int(d.get("tokens_per_min", 0)),
+            cost_per_hour_usd=float(d.get("cost_per_hour_usd", 0.0)),
+            max_wall_clock_s=float(d.get("max_wall_clock_s", 0.0)),
+            max_tool_calls=int(d.get("max_tool_calls", 0)),
+            max_turns=int(d.get("max_turns", 50)),
+        )
+
 
 @dataclass
 class Usage:
@@ -73,6 +87,32 @@ class Usage:
             "turns": self.turns,
             "wall_clock_s": round(self.run_time_s, 3),
         }
+
+    def to_ckpt_dict(self) -> dict:
+        """Full serialization for durable checkpoints (incl. the tpm window)."""
+        return {
+            "tokens_in": self.tokens_in,
+            "tokens_out": self.tokens_out,
+            "cost_usd": self.cost_usd,
+            "tool_calls": self.tool_calls,
+            "turns": self.turns,
+            "run_time_s": self.run_time_s,
+            "token_window_start": self.token_window_start,
+            "tokens_in_window": self.tokens_in_window,
+        }
+
+    @classmethod
+    def from_ckpt_dict(cls, d: dict) -> "Usage":
+        return cls(
+            tokens_in=int(d.get("tokens_in", 0)),
+            tokens_out=int(d.get("tokens_out", 0)),
+            cost_usd=float(d.get("cost_usd", 0.0)),
+            tool_calls=int(d.get("tool_calls", 0)),
+            turns=int(d.get("turns", 0)),
+            run_time_s=float(d.get("run_time_s", 0.0)),
+            token_window_start=float(d.get("token_window_start", 0.0)),
+            tokens_in_window=int(d.get("tokens_in_window", 0)),
+        )
 
 
 @dataclass

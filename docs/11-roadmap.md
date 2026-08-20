@@ -51,6 +51,13 @@
 - Semantic FS (`fs_search`) built on the L3 index.
 - `--resume` boot path (restore suspended agents after restart).
 
+**Progress — Slice 2.1 (done):** durable on-disk checkpoints
+(`<root>/checkpoints/<id>/snapshot.json` + `manifest.json`, sha256-integrity-verified on
+restore) and the `--resume` boot path (`Kernel.restore_session()` → SDK
+`ControlPlane.resume_session()` → `aios resume`), backed by a session manifest
+(`aios-data/session.json`) upserted atomically on every committed checkpoint. Crash-resume
+acceptance is green (`tests/e2e/test_acceptance.py`).
+
 **Key acceptance tests**
 - Crash the kernel; `--resume`; every agent is back at its last committed checkpoint.
 - A → handoff → B → result → A (`join`) completes end-to-end.
