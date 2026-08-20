@@ -18,7 +18,6 @@ Security model:
 from __future__ import annotations
 
 import asyncio
-import os
 import shlex
 import subprocess
 import time
@@ -58,13 +57,8 @@ class Tool:
 
 
 def _ws_path(kernel, pid: int, rel: str) -> str:
-    if not rel or rel.startswith(("/", "~")):
-        raise AiosError(E_INVAL, f"path must be workspace-relative, got '{rel}'")
-    root = kernel.workspaces.path_for(pid)
-    target = (root / rel).resolve()
-    if not str(target).startswith(str(root.resolve())):
-        raise AiosError(E_INVAL, f"path escapes workspace: '{rel}'")
-    return str(target)
+    """Resolve a virtual path inside the agent's workspace (never escapes)."""
+    return kernel.workspaces.resolve(pid, rel)
 
 
 class ToolManager:
@@ -196,19 +190,10 @@ class ToolManager:
         )
 # --------------------------------------------------------- tool handlers
     async def _fs_read(self, kernel, pid: int, args: dict) -> dict:
-        target = _ws_path(kernel, pid, args["path"])
-        if not os.path.isfile(target):
-            raise AiosError(E_NOENT, f"no such file: {args['path']}")
-        with open(target, "r", encoding="utf-8") as fh:
-            content = fh.read(args.get("max_bytes") or 32_000)
-        return {"path": args["path"], "content": content, "bytes": len(content)}
+        return await kernel.fs.read(pid, args["path"], max_bytes=args.get("max_bytes") or 32_000)
 
     async def _fs_write(self, kernel, pid: int, args: dict) -> dict:
-        target = _ws_path(kernel, pid, args["path"])
-        os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
-        with open(target, "w", encoding="utf-8") as fh:
-            fh.write(args["content"])
-        return {"path": args["path"], "bytes": len(args["content"])}
+        return await kernel.fs.write(pid, args["path"], args["content"])
 
     async def _shell_run(self, kernel, pid: int, args: dict) -> dict:
         cmd = args["command"]

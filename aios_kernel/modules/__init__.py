@@ -5,6 +5,8 @@ from . import (  # noqa: F401
     agent_manager,
     audit,
     context,
+    embedder,
+    fs,
     ipc,
     llm_core,
     memory,

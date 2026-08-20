@@ -82,6 +82,12 @@ SCHEMAS: dict[str, dict] = {
             "key": {"type": "string", "minLength": 1},
             "value": {},
             "ttl": {"type": "number", "minimum": 0},
+            "kind": {"enum": ["episodic", "semantic", "procedural"]},
+            "tags": {
+                "type": "array",
+                "items": {"type": "string", "minLength": 1},
+                "uniqueItems": True,
+            },
         },
         "additionalProperties": False,
     },
@@ -92,6 +98,31 @@ SCHEMAS: dict[str, dict] = {
             "namespace": {"type": "string", "minLength": 1},
             "key": {"type": "string", "minLength": 1},
         },
+        "additionalProperties": False,
+    },
+    "search_memory": {
+        "type": "object",
+        "required": ["query"],
+        "properties": {
+            "query": {"type": "string", "minLength": 1},
+            "namespace": {"type": "string", "minLength": 1},
+            "top_k": {"type": "integer", "minimum": 1, "maximum": 100},
+            "min_score": {"type": "number", "minimum": 0, "maximum": 1},
+        },
+        "additionalProperties": False,
+    },
+    "forget_memory": {
+        "type": "object",
+        "required": ["namespace"],
+        "properties": {
+            "namespace": {"type": "string", "minLength": 1},
+            "key": {"type": "string", "minLength": 1},
+        },
+        "additionalProperties": False,
+    },
+    "summarize_context": {
+        "type": "object",
+        "properties": {"target_tokens": {"type": "integer", "minimum": 1}},
         "additionalProperties": False,
     },
     "list_tools": {
@@ -212,6 +243,44 @@ SCHEMAS: dict[str, dict] = {
                 "uniqueItems": True,
             },
             "timeout_ms": {"type": "number", "minimum": 0, "maximum": 86400000},
+        },
+        "additionalProperties": False,
+    },
+    "store_artifact": {
+        "type": "object",
+        "required": ["path", "data"],
+        "properties": {
+            "path": {"type": "string", "minLength": 1, "maxLength": 1024},
+            "data": {"type": "string", "maxLength": 1_000_000},
+            "mime": {"type": "string", "minLength": 1, "maxLength": 128},
+        },
+        "additionalProperties": False,
+    },
+    "fs_read": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+            "path": {"type": "string", "minLength": 1, "maxLength": 1024},
+            "max_bytes": {"type": "integer", "minimum": 1, "maximum": 1_000_000},
+        },
+        "additionalProperties": False,
+    },
+    "fs_write": {
+        "type": "object",
+        "required": ["path", "content"],
+        "properties": {
+            "path": {"type": "string", "minLength": 1, "maxLength": 1024},
+            "content": {"type": "string", "maxLength": 1_000_000},
+            "mime": {"type": "string", "minLength": 1, "maxLength": 128},
+        },
+        "additionalProperties": False,
+    },
+    "fs_search": {
+        "type": "object",
+        "required": ["query"],
+        "properties": {
+            "query": {"type": "string", "minLength": 1},
+            "top_k": {"type": "integer", "minimum": 1, "maximum": 100},
         },
         "additionalProperties": False,
     },

@@ -2,13 +2,14 @@
 
 Ownership map (docs/02-kernel.md §2):
   * audit       — append-only JSONL audit trail (every syscall recorded)
-  * context     — per-agent LL1 message history
-  * memory      — per-agent L2 working memory (in-memory, Phase 1)
+  * context     — per-agent LL1 message history + summarize_context eviction
+  * memory      — L2 working memory (checkpointed) + L3 long-term store (RAG)
   * workspaces  — one sandboxed directory per agent
   * storage     — durable on-disk checkpoints + the session resume set
   * vault       — get_env backend (non-secret config; Phase 1)
   * llm         — serialized LLM service with per-agent accounting
   * tools       — Tool Manager (registry + call_tool pipeline)
+  * fs          — semantic FS (fs_read/write, store_artifact, fs_search)
   * ipc         — IPC Manager (mailboxes, pub/sub, handoffs, join)
   * agent_manager — process table + lifecycle
   * scheduler   — priority/aging single-CPU scheduling + budgets
@@ -24,6 +25,7 @@ from . import modules  # noqa: F401  (importing registers every syscall handler)
 from .modules.agent_manager import AgentManager
 from .modules.audit import AuditLog
 from .modules.context import ContextManager
+from .modules.fs import SemanticFS
 from .modules.ipc import IPCManager
 from .modules.llm_core import LLMCore
 from .modules.memory import MemoryManager
@@ -54,7 +56,9 @@ class Kernel:
             self, path=audit_path or (str(self.data_root / "audit.jsonl") if self.data_root else None)
         )
         self.context = ContextManager(self)
-        self.memory = MemoryManager(self)
+        self.memory = MemoryManager(
+            self, root=(str(self.data_root / "memory") if self.data_root else None)
+        )
         self.workspaces = WorkspaceManager(
             workspace_root or (str(self.data_root / "workspaces") if self.data_root else None)
         )
@@ -66,6 +70,7 @@ class Kernel:
         self.vault = Vault(self)
         self.llm = LLMCore(self, backend=llm_backend)
         self.tools = ToolManager(self)
+        self.fs = SemanticFS(self)
         self.ipc = IPCManager(self)
         self.agent_manager = AgentManager(self)
         self.scheduler = Scheduler(self)

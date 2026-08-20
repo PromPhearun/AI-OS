@@ -78,6 +78,13 @@ A checkpoint is the **unit of resumability**:
 
 ## 4. Artifacts (syscalls 26–28)
 
+> **Phase 2 status — Slice 2.3:** implemented. `store_artifact {path, data,
+> mime?}` writes content into the sandbox and returns an `artifact_id`;
+> `fs_read {path, max_bytes?}` and `fs_write {path, content, mime?}` are the
+> canonical read/write syscalls (virtual paths, traversal-rejected by
+> construction). The `fs.read` / `fs.write` tools delegate to the same
+> implementation, so every write is embedding-indexed once.
+
 - `store_artifact` writes content by path *within the agent's sandbox view*; the kernel assigns
   an `artifact_id` and records metadata.
 - `fs_read` / `fs_write` operate on the agent's sandbox namespace — an agent can *never* address
@@ -88,6 +95,15 @@ A checkpoint is the **unit of resumability**:
 - Artifacts are immutable once written; updates create new versions (`artifact_id` changes).
 
 ## 5. Semantic File System (syscall 29: `fs_search`)
+
+> **Phase 2 status — Slice 2.3:** implemented. Every successful `fs.write`
+> tool call / `fs_write` / `store_artifact` is embedding-indexed into
+> `aios-data/memory/artifacts.jsonl` (same vector store as L3 memory);
+> `fs_search {query, top_k?}` returns ranked hits
+> `{artifact_id, path, mime, snippet, score, created_at}` for the caller's own
+> artifacts. Artifacts are namespaced by agent (isolation enforced; a global
+> `shared://` publish namespace is deferred). Fallback path addressing always
+> works (`fs_read`).
 
 Files and checkpoints are **embedding-indexed** at write time, giving natural-language access:
 

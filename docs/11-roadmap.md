@@ -71,6 +71,27 @@ BLOCKED agents first so in-flight syscalls unwind cleanly. Unit + integration + 
 green (`tests/unit/test_ipc.py`, `tests/integration/test_ipc.py`, `A → handoff → B → result →
 A` in `tests/e2e/test_acceptance.py`).
 
+**Progress — Slice 2.3 (done):** L3 long-term memory (RAG) + the semantic FS +
+context summarization. The Memory Manager gained an embedding-indexed, persistent
+store (`<root>/memory/entries.jsonl`, WAL append + fsync; reloaded on boot) —
+`write_memory` with an explicit `kind` (episodic/semantic/procedural) writes L3,
+`search_memory(query, namespace?, top_k, min_score?)` retrieves by cosine similarity,
+`forget_memory(namespace, key?)` deletes. Namespaces are isolated per agent and shared
+pools are granted via `spec.memory.pools[].access` (deny-by-default → `E_PERM`). The
+semantic FS (`docs/05-storage.md` §4-5) serves `store_artifact`, `fs_read`, `fs_write`,
+`fs_search`: every successful write is embedding-indexed (same vector store as L3) and
+`fs_search` finds artifacts by meaning, not path; the `fs.read`/`fs.write` tools delegate
+to the same implementation. Context summarization (`summarize_context`, docs/04-memory.md
+§2) collapses the oldest non-pinned turns into one summary message via a cheap kernel LLM
+call, preserving ALL pinned content and the most recent `keep_recent_messages` turns
+verbatim; `generate` auto-summarizes first when the spec sets `context.context_token_budget`.
+Embeddings come from a deterministic, dependency-free hashing embedder (offline) or an
+OpenAI-compatible `/embeddings` endpoint when `AIOS_EMBED_URL` is configured
+(`aios_kernel/modules/embedder.py`). Unit + integration + e2e acceptance green
+(`tests/unit/test_embedder.py`, `test_memory_l3.py`, `test_fs.py`,
+`test_context_summarize.py`, `tests/integration/test_memory.py`, `test_fs_semantic.py`,
+`tests/e2e/test_acceptance.py`).
+
 **Key acceptance tests**
 - Crash the kernel; `--resume`; every agent is back at its last committed checkpoint.
 - A → handoff → B → result → A (`join`) completes end-to-end.

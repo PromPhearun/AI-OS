@@ -75,11 +75,63 @@ class AgentSession:
         return (await self.syscall("append_context", {"role": role, "content": content, "pinned": pinned}))["tokens"]
 
     # --------------------------------------------------------------- memory
-    async def write_memory(self, namespace: str, key: str, value, ttl: float | None = None) -> dict:
-        return await self.syscall("write_memory", {"namespace": namespace, "key": key, "value": value, "ttl": ttl})
+    async def write_memory(
+        self,
+        namespace: str,
+        key: str,
+        value,
+        *,
+        ttl: float | None = None,
+        kind: str | None = None,
+        tags: list[str] | None = None,
+    ) -> dict:
+        """Write to L2 working memory, or — with ``kind`` — to L3 long-term
+        memory (embedding-indexed and persisted; docs/04-memory.md §4)."""
+        return await self.syscall(
+            "write_memory",
+            {"namespace": namespace, "key": key, "value": value, "ttl": ttl, "kind": kind, "tags": tags},
+        )
 
     async def read_memory(self, namespace: str, key: str):
+        """Read from L2 first, then L3."""
         return (await self.syscall("read_memory", {"namespace": namespace, "key": key}))["value"]
+
+    async def search_memory(
+        self, query: str, *, namespace: str | None = None, top_k: int = 5, min_score: float | None = None
+    ) -> list[dict]:
+        """RAG retrieval: ranked hits [{namespace, key, kind, value, score, ...}]."""
+        return (
+            await self.syscall(
+                "search_memory",
+                {"query": query, "namespace": namespace, "top_k": top_k, "min_score": min_score},
+            )
+        )["hits"]
+
+    async def forget_memory(self, namespace: str, key: str | None = None) -> dict:
+        """Delete one L3 key (or the whole namespace); returns {deleted}."""
+        return await self.syscall("forget_memory", {"namespace": namespace, "key": key})
+
+    # --------------------------------------------------------------- context
+    async def summarize_context(self, target_tokens: int | None = None) -> dict:
+        """Collapse old turns into one summary; preserves pinned + recent N."""
+        return await self.syscall("summarize_context", {"target_tokens": target_tokens})
+
+    # ------------------------------------------------------------- semantic fs
+    async def store_artifact(self, path: str, data: str, *, mime: str | None = None) -> str:
+        """Write content into the sandbox and register an immutable artifact."""
+        return (
+            await self.syscall("store_artifact", {"path": path, "data": data, "mime": mime})
+        )["artifact_id"]
+
+    async def fs_read(self, path: str, *, max_bytes: int | None = None) -> dict:
+        return await self.syscall("fs_read", {"path": path, "max_bytes": max_bytes})
+
+    async def fs_write(self, path: str, content: str, *, mime: str | None = None) -> dict:
+        return await self.syscall("fs_write", {"path": path, "content": content, "mime": mime})
+
+    async def fs_search(self, query: str, *, top_k: int = 5) -> list[dict]:
+        """Semantic FS: find artifacts by meaning, not path."""
+        return (await self.syscall("fs_search", {"query": query, "top_k": top_k}))["hits"]
 
     # ---------------------------------------------------------------- tools
     async def list_tools(self, query: str | None = None) -> list[dict]:

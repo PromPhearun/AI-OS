@@ -201,6 +201,11 @@ class LLMCore:
 @register("generate")
 async def _generate(kernel, pid: int, args: dict) -> dict:
     """Agent-mediated LLM turn: context in, model reply appended to context."""
+    # Automatic eviction: if the spec sets context.context_token_budget and the
+    # window is over budget, summarize first so assembly always fits.
+    budget = kernel.agent_manager.get(pid).spec.get("context", {}).get("context_token_budget")
+    if budget and kernel.context.tokens(pid) > budget:
+        await kernel.context.summarize(pid, target_tokens=int(budget * 0.5))
     if args.get("user"):
         kernel.context.append(pid, "user", args["user"])
     messages = kernel.context.read(pid)

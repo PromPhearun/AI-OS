@@ -78,6 +78,35 @@
         }
       }
     },
+    "memory": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "L3 long-term memory grants (docs/04-memory.md §5). Deny-by-default: pools not listed here are unreachable (E_PERM).",
+      "properties": {
+        "pools": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["pool", "access"],
+            "additionalProperties": false,
+            "properties": {
+              "pool": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" },
+              "access": { "enum": ["read", "read-write"] }
+            }
+          },
+          "default": []
+        }
+      }
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "L1 context-window policy (docs/04-memory.md §2). Omitting context_token_budget disables automatic summarization.",
+      "properties": {
+        "context_token_budget": { "type": "integer", "minimum": 1 },
+        "keep_recent_messages": { "type": "integer", "minimum": 1, "default": 4 }
+      }
+    },
     "capabilities": {
       "type": "object",
       "additionalProperties": false,

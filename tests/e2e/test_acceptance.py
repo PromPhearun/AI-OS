@@ -190,3 +190,79 @@ async def test_crash_then_resume_brings_agents_back(tmp_path) -> None:
             await k2.shutdown()
     finally:
         AGENT_REGISTRY.pop("e2e-restart", None)
+
+
+@pytest.mark.asyncio
+async def test_agent_recalls_written_artifact_by_meaning(kernel: Kernel) -> None:
+    """Acceptance (Phase 2): fs_search finds a previously written artifact by
+    meaning, not path (docs/11-roadmap.md §4)."""
+    from aios_sdk import AgentRunner
+    from aios_sdk.agent import AGENT_REGISTRY
+
+    async def analyst(sc) -> bool:
+        await sc.call_tool(
+            "fs.write",
+            {
+                "path": "q3-report.md",
+                "content": "Q3 revenue analysis: revenue grew 18% to $2.4M driven by the enterprise product line.",
+            },
+        )
+        hits = await sc.fs_search("the Q3 revenue analysis and growth", top_k=3)
+        assert hits, "fs_search found nothing for a written artifact"
+        assert hits[0]["path"] == "q3-report.md"
+        return True
+
+    AGENT_REGISTRY["e2e-analyst"] = {"turn": analyst, "spec": None}
+    try:
+        spec = _base_spec(name="e2e-analyst")
+        pid = await kernel.spawn_agent(
+            spec, runner_factory=lambda pid: AgentRunner(kernel, pid, analyst).run()
+        )
+        await kernel.agent_manager.wait_task(pid)
+        rec = kernel.agent_manager.record(pid)
+        assert rec["exit_status"] == "ok"
+    finally:
+        AGENT_REGISTRY.pop("e2e-analyst", None)
+
+
+@pytest.mark.asyncio
+async def test_context_summarization_preserves_pinned_items(tmp_path) -> None:
+    """Acceptance (Phase 2): a summarized window preserves all pinned content
+    and the most recent turns verbatim (docs/11-roadmap.md §4)."""
+    from aios_kernel.modules.llm_core import MockLLM
+    from aios_sdk import AgentRunner
+    from aios_sdk.agent import AGENT_REGISTRY
+
+    k = Kernel(
+        data_root=str(tmp_path),
+        llm_backend=MockLLM(
+            script={"Summarize the conversation history": "condensed summary"},
+            default="ok",
+            mode="script",
+        ),
+    )
+
+    async def worker(sc) -> bool:
+        await sc.append_context("user", "task brief: ship the Q3 report", pinned=True)
+        for i in range(1, 9):
+            await sc.append_context("user", f"turn detail number {i}")
+        res = await sc.summarize_context(target_tokens=300)
+        assert res["tokens_saved"] > 0
+        ctx = [m["content"] for m in await sc.read_context()]
+        assert "task brief: ship the Q3 report" in ctx  # pinned survived
+        assert "turn detail number 8" in ctx             # most recent verbatim
+        assert "turn detail number 1" not in ctx         # collapsed into the summary
+        return True
+
+    AGENT_REGISTRY["e2e-summ"] = {"turn": worker, "spec": None}
+    try:
+        spec = _base_spec(name="e2e-summ")
+        pid = await k.spawn_agent(
+            spec, runner_factory=lambda pid: AgentRunner(k, pid, worker).run()
+        )
+        await k.agent_manager.wait_task(pid)
+        rec = k.agent_manager.record(pid)
+        assert rec["exit_status"] == "ok"
+    finally:
+        AGENT_REGISTRY.pop("e2e-summ", None)
+        await k.shutdown()

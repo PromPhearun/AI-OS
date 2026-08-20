@@ -79,12 +79,42 @@ async def append_context(role: str, content: str, pinned: bool = False):
 
 
 # ------------------------------------------------------------------- memory
-async def write_memory(namespace: str, key: str, value, ttl: float | None = None):
-    return await _sc().write_memory(namespace, key, value, ttl)
+async def write_memory(namespace: str, key: str, value, *, ttl: float | None = None, kind: str | None = None, tags: list[str] | None = None):
+    return await _sc().write_memory(namespace, key, value, ttl=ttl, kind=kind, tags=tags)
 
 
 async def read_memory(namespace: str, key: str):
     return await _sc().read_memory(namespace, key)
+
+
+async def search_memory(query: str, *, namespace: str | None = None, top_k: int = 5, min_score: float | None = None):
+    return await _sc().search_memory(query, namespace=namespace, top_k=top_k, min_score=min_score)
+
+
+async def forget_memory(namespace: str, key: str | None = None):
+    return await _sc().forget_memory(namespace, key)
+
+
+# --------------------------------------------------------------- context
+async def summarize_context(target_tokens: int | None = None):
+    return await _sc().summarize_context(target_tokens)
+
+
+# ------------------------------------------------------------- semantic fs
+async def store_artifact(path: str, data: str, *, mime: str | None = None):
+    return await _sc().store_artifact(path, data, mime=mime)
+
+
+async def fs_read(path: str, *, max_bytes: int | None = None):
+    return await _sc().fs_read(path, max_bytes=max_bytes)
+
+
+async def fs_write(path: str, content: str, *, mime: str | None = None):
+    return await _sc().fs_write(path, content, mime=mime)
+
+
+async def fs_search(query: str, *, top_k: int = 5):
+    return await _sc().fs_search(query, top_k=top_k)
 
 
 # -------------------------------------------------------------------- tools

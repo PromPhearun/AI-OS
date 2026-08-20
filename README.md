@@ -26,6 +26,18 @@ validated, spawnable spec), and `join(pids, timeout_ms)` for synchronous
 orchestration. Mailboxes and subscriptions are checkpointed with the agent, so a
 crash-resumed agent wakes to a faithful mailbox. IPC permissions are deny-by-default
 and declared in the agent spec (`ipc.can_send_to` / `can_subscribe` / `can_publish`).
+
+**Phase 2 — L3 memory + semantic FS + context summarization implemented (Slice 2.3).**
+L3 long-term memory is an embedding-indexed, persistent store
+(`aios-data/memory/entries.jsonl`): `write_memory(..., kind=...)` writes it,
+`search_memory` retrieves by cosine similarity, `forget_memory` deletes; shared
+memory pools are granted via `spec.memory.pools` (deny-by-default). The semantic FS
+serves `store_artifact` / `fs_read` / `fs_write` / `fs_search` — every write is
+embedding-indexed and `fs_search` finds artifacts **by meaning, not path** (the
+`fs.read`/`fs.write` tools share the same index). `summarize_context` collapses old
+turns into one summary while preserving all pinned content and the most recent turns
+verbatim. Embeddings are offline/deterministic by default (a hashing embedder) or
+OpenAI-compatible via `AIOS_EMBED_URL`.
 See [`docs/11-roadmap.md`](docs/11-roadmap.md) for the phased plan.
 
 ## Quickstart
@@ -92,11 +104,13 @@ docs/11-roadmap.md   # how we'll build it
 
 ## Next Step
 
-**Slices 2.1 + 2.2 of Phase 2 — State & Memory are delivered** (durable on-disk checkpoints
-with sha256 integrity verification, the `--resume` boot path, the session manifest, and kernel
-IPC: mailboxes, pub/sub, handoffs, and `join`). The remaining Phase 2 slices — semantic FS
-(`fs_search`) and the memory/retrieval stack — land next, per
-[`docs/11-roadmap.md`](docs/11-roadmap.md).
+**Phase 2 — State & Memory is fully delivered.** Slices 2.1 (durable checkpoints +
+`--resume`), 2.2 (kernel IPC: mailboxes, pub/sub, handoffs, `join`), and 2.3 (L3
+long-term memory + RAG, the semantic FS with `fs_search`-by-meaning, and context
+summarization) are all landed and tested — every Phase 2 acceptance criterion is green
+(`tests/e2e/test_acceptance.py`). The next phase is **Phase 3 — Tooling & Security**:
+MCP client, tool scheduler, sandboxes, access control + approvals, and audit-log
+hashing, per [`docs/11-roadmap.md`](docs/11-roadmap.md).
 
 ---
 

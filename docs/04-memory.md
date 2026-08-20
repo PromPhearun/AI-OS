@@ -3,6 +3,19 @@
 **Status:** Draft (v0.1)
 **Relates to:** `02-kernel.md` (syscalls 12–15), `03-scheduler.md` (context switching), `05-storage.md`.
 
+> **Phase 2 status — Slice 2.3:** L3 is implemented as an embedding-indexed,
+> persistent store. `write_memory` with an explicit `kind` (episodic |
+> semantic | procedural) writes to L3 (durable via `aios-data/memory/
+> entries.jsonl`, reloaded on boot); `search_memory(query, namespace?, top_k,
+> min_score?)` retrieves by cosine similarity; `forget_memory(namespace,
+> key?)` deletes. Shared pools are granted by `spec.memory.pools[].access`
+> and enforced deny-by-default. The semantic FS shares the same vector store
+> (see `05-storage.md` §5). `summarize_context` collapses old turns while
+> preserving all pinned content and the most recent `keep_recent_messages`
+> turns verbatim; `generate` auto-summarizes when the spec sets
+> `context.context_token_budget`. Embeddings: deterministic hashing embedder
+> (offline, default) or OpenAI-compatible `/embeddings` (`AIOS_EMBED_URL`).
+
 ---
 
 ## 1. The Memory Hierarchy
