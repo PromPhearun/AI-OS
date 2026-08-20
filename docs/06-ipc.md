@@ -118,3 +118,51 @@ Agents are expected to treat messages as possibly re-delivered; the SDK exposes
    deferred to v1.5; subscribe/publish covers most broadcast needs today.
 4. **Human-in-the-loop channel** — the shell is a first-class IPC peer: humans can `send_msg`
    to agents, and agents can request human approval via `request_permission` (see `08/10`).
+
+## 10. Realization — Phase 2, Slice 2.2 (implemented)
+
+Implemented in `aios_kernel/modules/ipc.py` (kernel), `aios_sdk/session.py` +
+`aios_sdk/syscalls.py` (typed SDK bindings), and `specs/agent.schema.json` (`ipc` grants).
+
+**Envelope** (`IpcMessage`): `{msg_id, type, from_pid, to_pid, reply_to, topic, body,
+priority, trace_id, created_at, expires_at, sig}`. `sig` is a `sha256:` integrity checksum
+over the canonical envelope payload; the keyed HMAC is deferred to Phase 3 with the audit-log
+hardening. `from_dict` re-signs on load, so checkpointed mailboxes are integrity-anchored.
+
+**Syscalls:** `send_msg`, `recv_msg`, `subscribe`, `unsubscribe`, `publish`, `join` — all
+argument-schema-validated (strict, `E_INVAL`), all audited, all exposed as typed SDK methods.
+
+- `send_msg(to_pid, body, type?, reply_to?, topic?, priority?, trace_id?, ttl_s?)` — never
+  blocks; enqueues and `wake`s a BLOCKED receiver. Send permission is deny-by-default:
+  `ipc.can_send_to` accepts `*`, `group:<id>`, or `pid:<n>` entries; a spec without `ipc`
+  cannot send (`E_PERM`). `type="reply"` requires `reply_to` and inherits the original
+  envelope's `trace_id` (found across all mailboxes by `msg_id`). `type="handoff"` requires
+  `body.spec` to be a **schema-validated, spawnable** spec (`E_INVAL` otherwise).
+- `recv_msg(timeout_ms, filter?)` — dequeues the first `{from_pid?, type?, topic?}` match, or
+  parks the caller in `BLOCKED` (`scheduler.block`, CPU slot freed) until arrival or deadline;
+  returns `{msg: {...} | None, reason: "timeout" | "state"}`. A `suspend` on a blocked agent
+  wakes it first so the in-flight syscall unwinds without `E_STATE`.
+- `subscribe`/`unsubscribe`/`publish` — hierarchical topics; a subscription pattern `*`, exact,
+  or `prefix.*` matches (`jobs.*` matches `jobs.data`, not `jobs`). Delivery is fan-out into
+  subscriber mailboxes via `enqueue`; `publish` returns the delivery count. Topic rights are
+  checked at subscribe and publish time (`ipc.can_subscribe` / `ipc.can_publish`).
+- `join(pids[], timeout_ms?)` — validates every target (`E_NOENT`), then parks the caller and
+  polls (50 ms) until all targets reach `TERMINATED` (live or reaped — results fall back to the
+  tombstone record so exit status survives reaping) or the deadline. Returns per-pid
+  `{pid, status, exit_status, exit_message}` + `timed_out`.
+
+**Mailbox policy:** per-agent FIFO; `ipc.mailbox.max_queue_depth` (default 100) → overflow
+drops the oldest envelope (audit `ipc.overflow` dead-letter); `ipc.mailbox.ttl_s` (default
+3600) → expired undelivered envelopes pruned on dequeue/enqueue (audit `ipc.dead_letter`).
+
+**Checkpoint integration:** `IPCManager.snapshot(pid)` / `restore(pid, mailbox, subscriptions)`
+are wired into `StorageManager.checkpoint()` / `restore()` and the `--resume` boot path — an
+agent resumes to a faithful mailbox and subscription set (unit + crash-resume tests cover this).
+
+**Tests:** `tests/unit/test_ipc.py` (envelope, topic match, permissions, mailbox policy,
+checkpoint persistence), `tests/integration/test_ipc.py` (send/recv, filter, timeout,
+wake-on-send, reply trace, pub/sub, unsubscribe, join, handoff), and the e2e acceptance
+`A → handoff → B → result → A (join + recv)` in `tests/e2e/test_acceptance.py`.
+
+**Deferred from this slice:** milestone-checkpoint joins (v1 joins on `TERMINATED` only),
+event replay, group multicast, and the shell as an IPC peer.

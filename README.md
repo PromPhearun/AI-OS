@@ -17,6 +17,15 @@ tools (`fs.read`, `fs.write`, `shell.run`), audit log, and a working CLI.
 are written to disk (sha256-verified snapshot + manifest, committed before ack), a
 session manifest (`aios-data/session.json`) records every suspended agent, and
 `aios resume` rebuilds a crashed kernel's agents at their last committed checkpoint.
+
+**Phase 2 — kernel IPC implemented (Slice 2.2).** Per-agent mailboxes with
+`send_msg`/`recv_msg` (send never blocks; recv blocks with a mandatory timeout and
+an optional filter), permissioned pub/sub over hierarchical topics (`subscribe`/
+`unsubscribe`/`publish`), the task-handoff protocol (handoff envelopes must carry a
+validated, spawnable spec), and `join(pids, timeout_ms)` for synchronous
+orchestration. Mailboxes and subscriptions are checkpointed with the agent, so a
+crash-resumed agent wakes to a faithful mailbox. IPC permissions are deny-by-default
+and declared in the agent spec (`ipc.can_send_to` / `can_subscribe` / `can_publish`).
 See [`docs/11-roadmap.md`](docs/11-roadmap.md) for the phased plan.
 
 ## Quickstart
@@ -83,9 +92,10 @@ docs/11-roadmap.md   # how we'll build it
 
 ## Next Step
 
-**Slice 2.1 of Phase 2 — State & Memory is delivered** (durable on-disk checkpoints with sha256
-integrity verification, the `--resume` boot path, and the session manifest). Remaining Phase 2
-slices — IPC (mailboxes, handoffs, `join`) and semantic FS (`fs_search`) — land next, per
+**Slices 2.1 + 2.2 of Phase 2 — State & Memory are delivered** (durable on-disk checkpoints
+with sha256 integrity verification, the `--resume` boot path, the session manifest, and kernel
+IPC: mailboxes, pub/sub, handoffs, and `join`). The remaining Phase 2 slices — semantic FS
+(`fs_search`) and the memory/retrieval stack — land next, per
 [`docs/11-roadmap.md`](docs/11-roadmap.md).
 
 ---

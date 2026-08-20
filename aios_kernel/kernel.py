@@ -9,6 +9,7 @@ Ownership map (docs/02-kernel.md §2):
   * vault       — get_env backend (non-secret config; Phase 1)
   * llm         — serialized LLM service with per-agent accounting
   * tools       — Tool Manager (registry + call_tool pipeline)
+  * ipc         — IPC Manager (mailboxes, pub/sub, handoffs, join)
   * agent_manager — process table + lifecycle
   * scheduler   — priority/aging single-CPU scheduling + budgets
 """
@@ -23,6 +24,7 @@ from . import modules  # noqa: F401  (importing registers every syscall handler)
 from .modules.agent_manager import AgentManager
 from .modules.audit import AuditLog
 from .modules.context import ContextManager
+from .modules.ipc import IPCManager
 from .modules.llm_core import LLMCore
 from .modules.memory import MemoryManager
 from .modules.scheduler import Scheduler
@@ -64,6 +66,7 @@ class Kernel:
         self.vault = Vault(self)
         self.llm = LLMCore(self, backend=llm_backend)
         self.tools = ToolManager(self)
+        self.ipc = IPCManager(self)
         self.agent_manager = AgentManager(self)
         self.scheduler = Scheduler(self)
         self.agent_logs: dict[int, list[dict]] = {}

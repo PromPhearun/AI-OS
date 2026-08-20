@@ -104,3 +104,48 @@ class AgentSession:
 
     async def yield_cpu(self) -> dict:
         return await self.syscall("yield", {"hint": "voluntary"})
+
+    # ------------------------------------------------------------------- ipc
+    async def send_msg(
+        self,
+        to_pid: int,
+        body: dict,
+        *,
+        type: str = "direct",
+        reply_to: str | None = None,
+        topic: str | None = None,
+        priority: int = 50,
+        trace_id: str | None = None,
+        ttl_s: float | None = None,
+    ) -> dict:
+        """Send one envelope; never blocks (returns {msg_id} immediately)."""
+        return await self.syscall(
+            "send_msg",
+            {
+                "to_pid": to_pid,
+                "body": body,
+                "type": type,
+                "reply_to": reply_to,
+                "topic": topic,
+                "priority": priority,
+                "trace_id": trace_id,
+                "ttl_s": ttl_s,
+            },
+        )
+
+    async def recv_msg(self, timeout_ms: float, *, filter: dict | None = None) -> dict:
+        """Block up to timeout_ms for a matching message: {msg: {...} | None}."""
+        return await self.syscall("recv_msg", {"timeout_ms": timeout_ms, "filter": filter})
+
+    async def subscribe(self, topic: str) -> dict:
+        return await self.syscall("subscribe", {"topic": topic})
+
+    async def unsubscribe(self, topic: str) -> dict:
+        return await self.syscall("unsubscribe", {"topic": topic})
+
+    async def publish(self, topic: str, payload: dict) -> int:
+        return (await self.syscall("publish", {"topic": topic, "payload": payload}))["delivered"]
+
+    async def join(self, pids: list[int], timeout_ms: float | None = None) -> dict:
+        """Wait until every listed agent is TERMINATED (or the deadline)."""
+        return await self.syscall("join", {"pids": pids, "timeout_ms": timeout_ms})

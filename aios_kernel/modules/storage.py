@@ -26,12 +26,13 @@ import json
 import os
 import shutil
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..acb import Budgets, Usage
 from ..errors import AiosError, E_INTERNAL, E_NOENT
 from .context import Message
+from .ipc import IpcMessage
 from ..syscalls.registry import register
 
 KERNEL_VERSION = "0.1.0"
@@ -86,6 +87,8 @@ class Checkpoint:
     usage: Usage
     budgets: Budgets
     spec: dict
+    mailbox: list[IpcMessage] = field(default_factory=list)
+    subscriptions: list[str] = field(default_factory=list)
     state: str = "suspended"
     hash: str = ""
     committed: bool = False
@@ -101,6 +104,8 @@ class Checkpoint:
             "hash": self.hash,
             "committed": self.committed,
             "context": [m.to_dict() for m in self.context],
+            "mailbox": [m.to_dict() for m in self.mailbox],
+            "subscriptions": list(self.subscriptions),
         }
 
 
@@ -119,6 +124,7 @@ class StorageManager:
     def checkpoint(self, pid: int, label: str | None = None) -> str:
         """Snapshot agent state, write it durably, ack, and update the resume set."""
         acb = self.kernel.agent_manager.get(pid)
+        ipc_snap = self.kernel.ipc.snapshot(pid)
         ckpt = Checkpoint(
             id=f"ck-{pid}-{self._seq:06d}",
             pid=pid,
@@ -130,6 +136,8 @@ class StorageManager:
             usage=copy.deepcopy(acb.usage),
             budgets=copy.deepcopy(acb.budgets),
             spec=copy.deepcopy(acb.spec),
+            mailbox=[IpcMessage.from_dict(m) for m in ipc_snap["mailbox"]],
+            subscriptions=list(ipc_snap["subscriptions"]),
             state=acb.state.value,
         )
         self._seq += 1
@@ -146,6 +154,8 @@ class StorageManager:
             "usage": ckpt.usage.to_ckpt_dict(),
             "budgets": ckpt.budgets.to_ckpt_dict(),
             "spec": ckpt.spec,
+            "mailbox": [m.to_dict() for m in ckpt.mailbox],
+            "subscriptions": list(ckpt.subscriptions),
         }
         snap_bytes = json.dumps(snapshot, sort_keys=True, default=str).encode("utf-8")
         snap_hash = hashlib.sha256(snap_bytes).hexdigest()
@@ -177,6 +187,9 @@ class StorageManager:
         acb = self.kernel.agent_manager.get(pid)
         self.kernel.context.restore(pid, ckpt.context)
         self.kernel.memory.restore(pid, ckpt.memory)
+        self.kernel.ipc.restore(
+            pid, [m.to_dict() for m in ckpt.mailbox], ckpt.subscriptions
+        )
         acb.usage = copy.deepcopy(ckpt.usage)
         acb.budgets = copy.deepcopy(ckpt.budgets)
         acb.spec = copy.deepcopy(ckpt.spec)
@@ -225,6 +238,8 @@ class StorageManager:
             usage=Usage.from_ckpt_dict(snap.get("usage", {})),
             budgets=Budgets.from_ckpt_dict(snap.get("budgets", {})),
             spec=snap.get("spec", {}),
+            mailbox=[IpcMessage.from_dict(m) for m in snap.get("mailbox", [])],
+            subscriptions=list(snap.get("subscriptions", [])),
             state=manifest.get("state", "suspended"),
             hash=expected,
             committed=bool(manifest.get("committed", False)),

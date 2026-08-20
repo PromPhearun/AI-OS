@@ -42,6 +42,42 @@
         "max_turns": { "type": "integer", "minimum": 1, "default": 50 }
       }
     },
+    "ipc": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "IPC capability grants (docs/06-ipc.md). Deny-by-default: omitting 'ipc' forbids all IPC.",
+      "properties": {
+        "can_send_to": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^(\\*|group:[a-z0-9_-]+|pid:[0-9]+)$"
+          },
+          "default": [],
+          "description": "Recipients this agent may send_msg to: '*' (any), 'group:<id>', or 'pid:<n>'."
+        },
+        "can_subscribe": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "default": [],
+          "description": "Topic patterns this agent may subscribe to ('*', exact, or 'prefix.*')."
+        },
+        "can_publish": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "default": [],
+          "description": "Topic patterns this agent may publish to."
+        },
+        "mailbox": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "max_queue_depth": { "type": "integer", "minimum": 1, "default": 100 },
+            "ttl_s": { "type": "number", "minimum": 0, "default": 3600 }
+          }
+        }
+      }
+    },
     "capabilities": {
       "type": "object",
       "additionalProperties": false,

@@ -78,6 +78,7 @@ class AgentManager:
 
         self.kernel.context.create(pid, system=spec["llm"].get("system"))
         self.kernel.memory.create_namespace(pid)
+        self.kernel.ipc.create(pid)
         self.kernel.agent_logs[pid] = []
         self.kernel.audit.record(
             "agent.spawn", pid=pid, spec_name=spec["name"], parent=caller_pid
@@ -123,6 +124,7 @@ class AgentManager:
         self._exit_events[pid] = asyncio.Event()
         self.kernel.context.create(pid, system=spec.get("llm", {}).get("system"))
         self.kernel.memory.create_namespace(pid)
+        self.kernel.ipc.create(pid)
         self.kernel.agent_logs[pid] = []
         if pid >= self._next_pid:
             self._next_pid = pid + 1
@@ -165,6 +167,7 @@ class AgentManager:
         self.kernel.scheduler.remove(pid)
         self.kernel.context.free(pid)
         self.kernel.memory.free(pid)
+        self.kernel.ipc.free(pid)
         self.kernel.agent_logs.pop(pid, None)
         self.kernel.workspaces.remove(pid)
         ev = self._exit_events.pop(pid, None)

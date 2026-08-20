@@ -7,7 +7,10 @@ Phase 1 model (docs/03-scheduler.md):
   * preemption happens only at turn boundaries (the agent loop yields);
   * aging: waiting agents gain +1 effective priority every AGING_RATE waits;
   * budgets are checked at the end of every turn; exhaustion hard-stops the
-    agent by checkpointing it and suspending it (E_BUDGET).
+    agent by checkpointing it and suspending it (E_BUDGET);
+  * blocking syscalls (recv_msg / join) park the caller in BLOCKED via
+    ``block``/``unblock`` and are woken by the IPC Manager via ``wake``
+    (docs/03-scheduler.md §5).
 """
 
 from __future__ import annotations
@@ -32,6 +35,7 @@ class Scheduler:
         self._seq: dict[int, int] = {}
         self._next_seq = 0
         self._running: int | None = None
+        self._blocked_events: dict[int, asyncio.Event] = {}
 
     # ------------------------------------------------------------- queue mgmt
     def add_ready(self, pid: int) -> None:
@@ -46,9 +50,48 @@ class Scheduler:
             self._seq.pop(pid, None)
         if self._running == pid:
             self._running = None
+        self._blocked_events.pop(pid, None)
 
     def is_running(self, pid: int) -> bool:
         return self._running == pid
+
+    # ---------------------------------------------------------- blocking IPC
+    def block(self, pid: int) -> asyncio.Event:
+        """Park the caller: RUNNING -> BLOCKED, freeing the CPU slot.
+
+        The returned event is set by ``wake`` when the agent's wait condition
+        may be satisfied (message arrival). The blocked coroutine is expected
+        to call ``unblock`` — then ``wait_for_grant`` — when it wakes or times
+        out (docs/03-scheduler.md §5).
+        """
+        acb = self.kernel.agent_manager.get(pid)
+        if self._running == pid:
+            self._running = None
+        transition(acb, AgentState.BLOCKED, "block")
+        event = asyncio.Event()
+        self._blocked_events[pid] = event
+        return event
+
+    def unblock(self, pid: int) -> None:
+        """Return a BLOCKED agent to READY + requeue it (wait resolved)."""
+        self._blocked_events.pop(pid, None)
+        acb = self.kernel.agent_manager.peek(pid)
+        if acb is None or acb.state is not AgentState.BLOCKED:
+            return
+        transition(acb, AgentState.READY, "unblock")
+        self.add_ready(pid)
+
+    def wake(self, pid: int) -> None:
+        """Wake a BLOCKED agent whose wait condition may now be satisfied."""
+        event = self._blocked_events.get(pid)
+        acb = self.kernel.agent_manager.peek(pid)
+        if acb is None or acb.state is not AgentState.BLOCKED:
+            return
+        transition(acb, AgentState.READY, "wake")
+        self.add_ready(pid)
+        if event is not None:
+            self._blocked_events.pop(pid, None)
+            event.set()
 
     def _effective(self, acb) -> int:
         return acb.priority + acb.wait_turns // self.AGING_RATE
@@ -175,6 +218,10 @@ class Scheduler:
             raise AiosError(E_STATE, f"agent {pid} is already terminated")
         if acb.state is AgentState.SUSPENDED:
             return {"checkpoint_id": acb.checkpoint_id}
+        if acb.state is AgentState.BLOCKED:
+            # Unpark an agent blocked in recv_msg/join so its in-flight syscall
+            # unwinds cleanly at the next grant check (no E_STATE on resume).
+            self.wake(pid)
         self.remove(pid)
         ckpt_id = self.kernel.storage.checkpoint(pid, label=reason)
         acb.checkpoint_id = ckpt_id

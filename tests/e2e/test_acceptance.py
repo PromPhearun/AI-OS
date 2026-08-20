@@ -12,6 +12,13 @@ from aios_kernel import Kernel
 
 from ..conftest import _base_spec
 
+_IPC = {
+    "can_send_to": ["*"],
+    "can_subscribe": ["*"],
+    "can_publish": ["*"],
+    "mailbox": {"max_queue_depth": 100, "ttl_s": 3600},
+}
+
 
 @pytest.mark.asyncio
 async def test_two_agents_progress_concurrently(kernel: Kernel) -> None:
@@ -75,6 +82,64 @@ async def test_runaway_agent_suspended_at_budget(kernel: Kernel) -> None:
         assert calls["n"] < 10  # suspended long before max_turns, no cooperation needed
     finally:
         AGENT_REGISTRY.pop("e2e-runaway", None)
+
+
+@pytest.mark.asyncio
+async def test_handoff_and_join_end_to_end(kernel: Kernel) -> None:
+    """Acceptance (Phase 2): A hands a job to B over IPC, B runs it and
+    replies, then A joins B and reads the result."""
+    from aios_sdk import AgentRunner
+    from aios_sdk.agent import AGENT_REGISTRY
+
+    out: dict = {}
+
+    async def turn_a(sc) -> bool:
+        out["pid_a"] = sc.pid
+        await sc.send_msg(
+            out["pid_b"], {"spec": _base_spec(name="e2e-handoff-b", ipc=_IPC)}, type="handoff"
+        )
+        joined = await sc.join([out["pid_b"]], timeout_ms=5000)
+        out["join"] = joined
+        reply = await sc.recv_msg(100)
+        out["reply"] = reply["msg"]
+        return True
+
+    async def turn_b(sc) -> bool:
+        res = await sc.recv_msg(5000)
+        out["handoff"] = res["msg"]
+        spec = res["msg"]["body"]["spec"]
+        spawned = await sc.spawn(spec)  # the handed-off spec is spawnable
+        await sc.send_msg(out["pid_a"], {"handled": spec["name"], "spawned": spawned}, type="direct")
+        return True
+
+    AGENT_REGISTRY["e2e-handoff-a"] = {"turn": turn_a, "spec": None}
+    AGENT_REGISTRY["e2e-handoff-b"] = {"turn": turn_b, "spec": None}
+    try:
+        pid_b = await kernel.spawn_agent(
+            _base_spec(name="e2e-handoff-b", ipc=_IPC),
+            runner_factory=lambda pid: AgentRunner(kernel, pid, turn_b).run(),
+        )
+        pid_a = await kernel.spawn_agent(
+            _base_spec(name="e2e-handoff-a", ipc=_IPC),
+            runner_factory=lambda pid: AgentRunner(kernel, pid, turn_a).run(),
+        )
+        out["pid_b"] = pid_b
+        await kernel.agent_manager.wait_task(pid_a)
+        await kernel.agent_manager.wait_task(pid_b)
+
+        assert out["handoff"]["type"] == "handoff"
+        assert out["handoff"]["body"]["spec"]["name"] == "e2e-handoff-b"
+        assert out["join"]["timed_out"] is False
+        result = out["join"]["results"][0]
+        assert result["pid"] == pid_b
+        assert result["exit_status"] == "ok"
+        assert out["reply"]["body"]["handled"] == "e2e-handoff-b"
+        spawned = out["reply"]["body"]["spawned"]
+        # the handed-off spec was actually spawned inside B's turn
+        assert kernel.agent_manager.peek(spawned) is not None
+    finally:
+        AGENT_REGISTRY.pop("e2e-handoff-a", None)
+        AGENT_REGISTRY.pop("e2e-handoff-b", None)
 
 
 @pytest.mark.asyncio

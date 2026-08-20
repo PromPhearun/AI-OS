@@ -148,6 +148,73 @@ SCHEMAS: dict[str, dict] = {
         },
         "additionalProperties": False,
     },
+    "send_msg": {
+        "type": "object",
+        "required": ["to_pid", "body"],
+        "properties": {
+            "to_pid": {"type": "integer", "minimum": 1},
+            "body": {"type": "object"},
+            "type": {"enum": ["direct", "reply", "handoff"]},
+            "reply_to": {"type": "string"},
+            "topic": {"type": "string"},
+            "priority": {"type": "integer", "minimum": 0, "maximum": 100},
+            "trace_id": {"type": "string"},
+            "ttl_s": {"type": "number", "minimum": 0},
+        },
+        "additionalProperties": False,
+    },
+    "recv_msg": {
+        "type": "object",
+        "required": ["timeout_ms"],
+        "properties": {
+            "timeout_ms": {"type": "number", "minimum": 0, "maximum": 86400000},
+            "filter": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "from_pid": {"type": "integer", "minimum": 1},
+                    "type": {"type": "string"},
+                    "topic": {"type": "string"},
+                },
+            },
+        },
+        "additionalProperties": False,
+    },
+    "subscribe": {
+        "type": "object",
+        "required": ["topic"],
+        "properties": {"topic": {"type": "string", "minLength": 1}},
+        "additionalProperties": False,
+    },
+    "unsubscribe": {
+        "type": "object",
+        "required": ["topic"],
+        "properties": {"topic": {"type": "string", "minLength": 1}},
+        "additionalProperties": False,
+    },
+    "publish": {
+        "type": "object",
+        "required": ["topic", "payload"],
+        "properties": {
+            "topic": {"type": "string", "minLength": 1},
+            "payload": {"type": "object"},
+        },
+        "additionalProperties": False,
+    },
+    "join": {
+        "type": "object",
+        "required": ["pids"],
+        "properties": {
+            "pids": {
+                "type": "array",
+                "items": {"type": "integer", "minimum": 1},
+                "minItems": 1,
+                "uniqueItems": True,
+            },
+            "timeout_ms": {"type": "number", "minimum": 0, "maximum": 86400000},
+        },
+        "additionalProperties": False,
+    },
 }
 
 

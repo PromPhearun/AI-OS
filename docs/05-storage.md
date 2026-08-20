@@ -44,6 +44,10 @@ aios-data/
 > (`<root>/checkpoints/<id>/snapshot.json` + `manifest.json` with `hash`/`committed`,
 > sha256-verified on restore) plus `aios-data/session.json`, the atomic resume set
 > that powers `aios resume`.
+>
+> **Slice 2.2:** the snapshot now also carries `mailbox` (envelopes, re-signed on load)
+> and `subscriptions`, so an agent resumed after a crash wakes to a faithful IPC state
+> (see `06-ipc.md` §10).
 
 A checkpoint is the **unit of resumability**:
 

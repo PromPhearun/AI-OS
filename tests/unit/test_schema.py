@@ -37,6 +37,16 @@ from aios_kernel.syscalls.schema import SCHEMAS, validate_args
         ("generate", {"user": "hi", "temperature": 0.5, "max_tokens": 100}),
         ("get_env", {"key": "HOME"}),
         ("log", {"level": "info", "message": "m"}),
+        ("send_msg", {"to_pid": 2, "body": {"text": "hi"}}),
+        ("send_msg", {"to_pid": 2, "body": {}, "type": "reply", "reply_to": "m1"}),
+        ("send_msg", {"to_pid": 2, "body": {"spec": {}}, "type": "handoff", "priority": 80, "ttl_s": 5}),
+        ("recv_msg", {"timeout_ms": 500}),
+        ("recv_msg", {"timeout_ms": 0, "filter": {"from_pid": 1, "type": "direct", "topic": "jobs"}}),
+        ("subscribe", {"topic": "jobs.*"}),
+        ("unsubscribe", {"topic": "jobs.*"}),
+        ("publish", {"topic": "jobs.data", "payload": {"id": 1}}),
+        ("join", {"pids": [1, 2]}),
+        ("join", {"pids": [3], "timeout_ms": 1000}),
     ],
 )
 def test_valid_args_pass(name, good) -> None:
@@ -67,6 +77,21 @@ def test_valid_args_pass(name, good) -> None:
         ("log", {"level": "verbose", "message": "x"}),
         ("log", {"message": "x"}),
         ("log", {"level": "info"}),
+        ("send_msg", {}),
+        ("send_msg", {"to_pid": 0, "body": {}}),
+        ("send_msg", {"to_pid": 1}),  # missing body
+        ("send_msg", {"to_pid": 1, "body": {}, "type": "broadcast"}),  # bad type
+        ("recv_msg", {}),  # missing timeout
+        ("recv_msg", {"timeout_ms": -1}),
+        ("recv_msg", {"timeout_ms": 10, "filter": {"bogus": 1}}),
+        ("subscribe", {}),
+        ("subscribe", {"topic": ""}),
+        ("publish", {"topic": "t"}),  # missing payload
+        ("publish", {"payload": {}}),  # missing topic
+        ("join", {}),  # missing pids
+        ("join", {"pids": []}),  # minItems
+        ("join", {"pids": [1, 1]}),  # uniqueItems
+        ("join", {"pids": ["1"]}),  # not integers
     ],
 )
 def test_invalid_args_raise_e_inval(name, bad) -> None:

@@ -58,6 +58,19 @@ restore) and the `--resume` boot path (`Kernel.restore_session()` → SDK
 (`aios-data/session.json`) upserted atomically on every committed checkpoint. Crash-resume
 acceptance is green (`tests/e2e/test_acceptance.py`).
 
+**Progress — Slice 2.2 (done):** kernel IPC — per-agent mailboxes, `send_msg`/`recv_msg`
+(send never blocks; recv has a mandatory timeout and an optional `{from_pid?, type?, topic?}`
+filter), permissioned pub/sub (hierarchical topics, `*`/exact/`prefix.*` patterns),
+`join(pids[], timeout_ms?)` with per-pid results, and the handoff protocol (a `handoff`
+envelope's body must carry a validated, spawnable spec). Mailboxes and subscriptions are
+checkpointed with the agent and restored across crash-resume (`--resume`). Deny-by-default
+permissions (`ipc.can_send_to` / `can_subscribe` / `can_publish` in `specs/agent.schema.json`)
+are enforced at syscall time. Blocking syscalls park the caller via `scheduler.block` (CPU
+slot freed) and are woken by the IPC Manager (`docs/03-scheduler.md` §5); `suspend` wakes
+BLOCKED agents first so in-flight syscalls unwind cleanly. Unit + integration + e2e acceptance
+green (`tests/unit/test_ipc.py`, `tests/integration/test_ipc.py`, `A → handoff → B → result →
+A` in `tests/e2e/test_acceptance.py`).
+
 **Key acceptance tests**
 - Crash the kernel; `--resume`; every agent is back at its last committed checkpoint.
 - A → handoff → B → result → A (`join`) completes end-to-end.

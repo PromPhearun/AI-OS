@@ -116,3 +116,47 @@ async def sleep(ms: float):
 
 async def yield_cpu():
     return await _sc().yield_cpu()
+
+
+# ---------------------------------------------------------------------- ipc
+async def send_msg(
+    to_pid: int,
+    body: dict,
+    *,
+    type: str = "direct",
+    reply_to: str | None = None,
+    topic: str | None = None,
+    priority: int = 50,
+    trace_id: str | None = None,
+    ttl_s: float | None = None,
+):
+    return await _sc().send_msg(
+        to_pid,
+        body,
+        type=type,
+        reply_to=reply_to,
+        topic=topic,
+        priority=priority,
+        trace_id=trace_id,
+        ttl_s=ttl_s,
+    )
+
+
+async def recv_msg(timeout_ms: float, *, filter: dict | None = None):
+    return await _sc().recv_msg(timeout_ms, filter=filter)
+
+
+async def subscribe(topic: str):
+    return await _sc().subscribe(topic)
+
+
+async def unsubscribe(topic: str):
+    return await _sc().unsubscribe(topic)
+
+
+async def publish(topic: str, payload: dict):
+    return await _sc().publish(topic, payload)
+
+
+async def join(pids: list[int], timeout_ms: float | None = None):
+    return await _sc().join(pids, timeout_ms=timeout_ms)
