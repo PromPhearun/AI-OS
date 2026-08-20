@@ -46,6 +46,17 @@ class ContextManager:
         self.kernel = kernel
         self._ctx: dict[int, list[Message]] = {}
 
+    def _redact(self, content: str) -> str:
+        """Scrub vault values from agent-authored messages at the boundary.
+
+        The LLM context is a kernel-owned surface: values resolved from the
+        vault never enter it (docs/08-security.md §5 hard rule), so a
+        checkpoint or summarize pass can never leak them either.
+        """
+        if self.kernel is None or not getattr(self.kernel, "vault", None):
+            return content
+        return self.kernel.vault.redact(content)
+
     def create(self, pid: int, system: str | None = None) -> None:
         msgs = []
         if system:
@@ -62,7 +73,7 @@ class ContextManager:
         return [m.to_dict() for m in self.get(pid)]
 
     def append(self, pid: int, role: str, content: str, pinned: bool = False) -> None:
-        self.get(pid).append(Message(role, content, pinned))
+        self.get(pid).append(Message(role, self._redact(content), pinned))
 
     def tokens(self, pid: int) -> int:
         return sum(len(m.content) // 4 + 4 for m in self.get(pid))

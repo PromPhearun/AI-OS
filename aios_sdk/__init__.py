@@ -12,6 +12,7 @@ from . import syscalls  # noqa: F401  (agent-side syscall proxy)
 from .agent import AGENT_REGISTRY, AgentRunner, RunSummary, agent, run_agents
 from .control import ControlPlane
 from .errors import (
+    AiosAbortError,
     AiosAgainError,
     AiosBudgetError,
     AiosBusyError,
@@ -55,6 +56,7 @@ __all__ = [
     "AiosToolError",
     "AiosLlmError",
     "AiosTimeoutError",
+    "AiosAbortError",
     "AiosInternalError",
     "__version__",
 ]

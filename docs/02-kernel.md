@@ -155,17 +155,27 @@ Agents (via the SDK) invoke syscalls by name against the kernel. The ABI is **ve
 | 21 | `join` | `{pids[], timeout_ms?}` | `{results[]}` | IPC (sync) |
 | 22 | `list_tools` | `{query?}` | `{tools[]}` | Tool Manager |
 | 23 | `call_tool` | `{tool, args}` | `{result, meta}` | Tool Manager |
-| 24 | `cancel_tool` | `{call_id}` | `{ok}` | Tool Manager |
+| 24 | `cancel_tool` | `{call_id}` | `{ok, cancelled, call_id}` | Tool Manager |
 | 25 | `checkpoint` | `{label?}` | `{checkpoint_id}` | Storage Manager |
 | 26 | `store_artifact` | `{path, data, mime?}` | `{artifact_id}` | Storage Manager |
 | 27 | `fs_read` | `{path}` | `{content, meta}` | Storage Manager |
 | 28 | `fs_write` | `{path, content, mime?}` | `{meta}` | Storage Manager |
 | 29 | `fs_search` | `{query, top_k?}` | `{hits[]}` | Storage Manager (semantic FS) |
 | 30 | `get_env` | `{key}` | `{value}` | Access Control (secrets vault) |
-| 31 | `request_permission` | `{action, resource, reason}` | `{approved, ticket}` | Access Control |
+| 31 | `request_permission` | `{tool, args, reason?}` | `{ticket_id, status, expires_at}` | Access Control |
 | 32 | `get_usage` | — | `{tokens, cost, tool_calls, wall_clock}` | Resource accounting |
 | 33 | `set_budget` | `{budgets}` | `{ok}` | Scheduler (privileged) |
 | 34 | `log` | `{level, message}` | `{ok}` | Audit (agent-facing) |
+| 35 | `generate` | `{user?, temperature?, max_tokens?}` | `{text, tokens_in, tokens_out, cost_usd}` | LLM Core |
+| 36 | `get_permissions` | — | resolved permission snapshot (§3) | Access Control |
+| 37 | `get_sandbox` | — | `{profile, cwd, env_keys, network, rlimits}` | Tool Manager (sandbox) |
+| 38 | `list_approvals` | `{all?}` | `{tickets[]}` | Access Control (`all=true` ⇒ operator) |
+| 39 | `approve_ticket` | `{ticket_id}` | `{ticket_id, status, tool}` | Access Control (operator) |
+| 40 | `deny_ticket` | `{ticket_id}` | `{ticket_id, status, tool}` | Access Control (operator) |
+| 41 | `mcp_list` | — | `{servers[]}` | MCP client (operator) |
+| 42 | `mcp_register` | `{server_id, transport, endpoint, headers?, env?, timeout_s?}` | `{server_id, ok}` | MCP client (operator) |
+| 43 | `mcp_unregister` | `{server_id}` | `{server_id, ok}` | MCP client (operator) |
+| 44 | `verify_audit` | — | `{valid, first_bad?}` | Audit (operator) |
 
 **Design rules:**
 - All args and returns are JSON. Binary payloads are referenced by artifact IDs (`store_artifact`).

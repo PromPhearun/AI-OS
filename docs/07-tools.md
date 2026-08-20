@@ -119,7 +119,9 @@ call_tool(id, args)
 
 ## 8. Open Design Decisions (to resolve at implementation)
 
-1. **MCP transport support** — stdio + HTTP in v1; SSE long-poll if needed later.
+1. **MCP transport support** — stdio + HTTP in v1; SSE long-poll if needed later. **Resolved
+   (Phase 3):** stdio-subprocess and HTTP/JSON-RPC clients are implemented in
+   `aios_kernel/modules/mcp.py`; SSE remains a future option.
 2. **Tool descriptions auto-injection** — how aggressively to inject tool docs into L1 (bounded,
    relevance-ranked; default off until measured).
 3. **Rate limit dimension** — per-agent vs. per-group vs. global defaults; recommend per-agent

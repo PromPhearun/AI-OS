@@ -4,8 +4,9 @@ Canonical syscall table lives in docs/02-kernel.md §5. Every syscall:
 
   1. is looked up in the registry (unknown → E_NOTIMPL),
   2. has its JSON args validated against a strict schema (bad → E_INVAL),
-  3. executes through the owning kernel module,
-  4. is audited with `{ts, pid, syscall, args_hash, result, duration_ms}`.
+  3. is checked by Access Control's dispatch gate (deny by default; Phase 3),
+  4. executes through the owning kernel module,
+  5. is audited with `{ts, pid, syscall, args_hash, result, duration_ms}`.
 
 Failures are returned to the caller as ``{error: {code, message}}`` — never
 raised across the ABI boundary. Details go to the audit log only.
@@ -67,6 +68,7 @@ async def dispatch(kernel, pid: int, name: str, args: dict) -> dict:
 
     try:
         validate_args(name, args)
+        kernel.access.check_syscall(pid, name, args)
         result = await handler(kernel, pid, args)
         _audit("ok")
         return result

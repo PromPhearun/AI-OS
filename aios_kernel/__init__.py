@@ -3,6 +3,7 @@
 from .acb import AgentState
 from .errors import (
     AiosError,
+    E_ABORT,
     E_AGAIN,
     E_BUDGET,
     E_BUSY,
@@ -24,6 +25,7 @@ __all__ = [
     "Kernel",
     "AgentState",
     "AiosError",
+    "E_ABORT",
     "E_AGAIN",
     "E_BUDGET",
     "E_BUSY",

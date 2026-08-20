@@ -108,6 +108,36 @@ OpenAI-compatible `/embeddings` endpoint when `AIOS_EMBED_URL` is configured
 - Audit log v2: hash-chained append-only; sensitive-data hashing.
 - Sandbox profile `subprocess` (rlimits, restricted cwd, no network by default).
 
+**Progress — Slice 3.1 (done):** Phase 3 — Tooling & Security. The **MCP client**
+supports the two v1 transports (stdio subprocess + HTTP/JSON-RPC); every server tool
+schema is re-validated and hardened before registration (must be a JSON-Schema
+object, extra properties rejected, string lengths capped at 8 KB, ≤ 128 tools/server),
+and server tools are mirrored into the global tool registry with operator-only
+`mcp_register`/`mcp_unregister` (threat T7). The **tool scheduler** enforces sandbox
+env (host secrets stripped; only `env.allowed_keys` vault values injected), per-agent
+rate limits (`E_BUSY`), deadlines, in-flight `cancel_tool` (`E_ABORT`), and the
+`max_tool_calls` budget pre-check (`E_BUDGET`); the subprocess sandbox confines cwd to
+the agent workspace, applies rlimits, and its binary allowlist excludes network/shell
+tools (`curl`, `wget`, `nc`, `python*`, `sh`/`bash`, `rm`, `sudo`). **Access
+Control** computes a resolved, immutable permission snapshot at spawn (RBAC
+`roles.json` in the data root merges role base capabilities; deny-by-default — an
+empty snapshot returns `E_PERM` for every syscall), gates every syscall at dispatch
+(including operator-only `approve_ticket`/`deny_ticket`/`mcp_*`/`verify_audit`), and
+runs the approval flow: `request_permission` enqueues a ticket with TTL expiry
+(`AIOS_APPROVAL_TTL_S`) and `max_pending` caps; an agent that exhausts its turn budget
+while a ticket is pending is **parked** (checkpointed + suspended) rather than
+terminated, and an operator `approve` resumes it to consume the grant. The **secret
+vault** persists `credentials.json` (0600), serves `get_env` strictly via
+`allowed_keys`, and `redact()`s values at every kernel-owned boundary — audit log,
+L2/L3 memory, artifact index, and LLM context — so secrets never enter logs,
+checkpoints, or context. The **audit log v2** is hash-chained: each record carries
+`{seq, ts, prev_hash, hash}` (sha256 over canonical JSON), survives restart by
+tail-restore, and `verify()` detects byte tampering, broken links, and unparseable
+records. Every `08-security.md` §12 acceptance item is green
+(`tests/unit/test_vault.py`, `test_access.py`, `test_audit_chain.py`;
+`tests/integration/test_mcp.py`, `test_sandbox.py`, `test_approvals.py`,
+`test_secrets_scanner.py`).
+
 **Key acceptance tests**
 - `08-security.md` §12 checklist.
 - Injection probe suite; permission snapshot immutability; secrets scanner.

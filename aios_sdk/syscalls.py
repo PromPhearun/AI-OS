@@ -130,6 +130,23 @@ async def cancel_tool(call_id: str):
     return await _sc().cancel_tool(call_id)
 
 
+# ------------------------------------------------------- access control
+async def get_permissions():
+    return await _sc().get_permissions()
+
+
+async def request_permission(tool: str, args: dict, reason: str | None = None):
+    return await _sc().request_permission(tool, args, reason)
+
+
+async def list_approvals(*, all: bool = False):
+    return await _sc().list_approvals(all=all)
+
+
+async def get_sandbox():
+    return await _sc().get_sandbox()
+
+
 # ----------------------------------------------------------- security/util
 async def get_env(key: str):
     return await _sc().get_env(key)

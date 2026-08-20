@@ -38,6 +38,26 @@ embedding-indexed and `fs_search` finds artifacts **by meaning, not path** (the
 turns into one summary while preserving all pinned content and the most recent turns
 verbatim. Embeddings are offline/deterministic by default (a hashing embedder) or
 OpenAI-compatible via `AIOS_EMBED_URL`.
+
+**Phase 3 — Tooling & Security implemented.** The MCP client (stdio + HTTP/JSON-RPC)
+hardens every server tool schema before registration (extra-property rejection, string
+caps) and mirrors tools into the kernel registry (operator-only register/unregister).
+The tool scheduler enforces sandbox env (no host secrets, only granted vault keys),
+per-agent rate limits, deadlines, in-flight cancellation, and tool-call budgets; the
+subprocess sandbox allowlist excludes network/shell binaries. Access Control computes
+an **immutable permission snapshot at spawn** (RBAC roles from `roles.json`,
+deny-by-default), gates every syscall (an empty snapshot returns `E_PERM`), and runs
+the approval flow: `request_permission` tickets with TTL expiry and `max_pending`,
+operator `approve_ticket`/`deny_ticket` — an agent that hits its turn budget while a
+ticket is pending is parked (checkpointed + suspended), never terminated, and
+approval resumes it. The secret vault serves `get_env` strictly via `env.allowed_keys`
+and redacts values at every kernel-owned boundary (audit log, checkpoints, memory,
+artifact index, LLM context). The audit log v2 is hash-chained and append-only:
+every record carries a recomputable `sha256` over its canonical JSON, and `verify()`
+detects tampering and unparseable records. All `docs/08-security.md` §12 acceptance
+items are green (`tests/unit/test_vault.py`, `test_access.py`, `test_audit_chain.py`;
+`tests/integration/test_mcp.py`, `test_sandbox.py`, `test_approvals.py`,
+`test_secrets_scanner.py`).
 See [`docs/11-roadmap.md`](docs/11-roadmap.md) for the phased plan.
 
 ## Quickstart
@@ -104,13 +124,14 @@ docs/11-roadmap.md   # how we'll build it
 
 ## Next Step
 
-**Phase 2 — State & Memory is fully delivered.** Slices 2.1 (durable checkpoints +
-`--resume`), 2.2 (kernel IPC: mailboxes, pub/sub, handoffs, `join`), and 2.3 (L3
-long-term memory + RAG, the semantic FS with `fs_search`-by-meaning, and context
-summarization) are all landed and tested — every Phase 2 acceptance criterion is green
-(`tests/e2e/test_acceptance.py`). The next phase is **Phase 3 — Tooling & Security**:
-MCP client, tool scheduler, sandboxes, access control + approvals, and audit-log
-hashing, per [`docs/11-roadmap.md`](docs/11-roadmap.md).
+**Phase 3 — Tooling & Security is fully delivered.** The MCP client (stdio + HTTP),
+tool scheduler + subprocess sandboxes, access control with approval tickets, the
+secret vault, and audit-log hashing are all landed and tested — every
+`docs/08-security.md` §12 acceptance criterion is green (approval grant/deny/expire,
+empty-snapshot `E_PERM`, secrets scanner, sandbox escape suite, audit tamper
+detection, rate-limit burst, injection probes). The next phase is **Phase 4 —
+Surfaces & Scale**: web desktop, REST/WS control API, provider failover, and the
+benchmark harness, per [`docs/11-roadmap.md`](docs/11-roadmap.md).
 
 ---
 

@@ -1,0 +1,1 @@
+"""Test fixtures: fake external servers (MCP stdio script, etc.)."""

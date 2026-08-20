@@ -284,6 +284,77 @@ SCHEMAS: dict[str, dict] = {
         },
         "additionalProperties": False,
     },
+    "get_permissions": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": False,
+    },
+    "request_permission": {
+        "type": "object",
+        "required": ["tool", "args"],
+        "properties": {
+            "tool": {"type": "string", "minLength": 1, "maxLength": 256},
+            "args": {"type": "object"},
+            "reason": {"type": "string", "maxLength": 500},
+        },
+        "additionalProperties": False,
+    },
+    "list_approvals": {
+        "type": "object",
+        "properties": {"all": {"type": "boolean"}},
+        "additionalProperties": False,
+    },
+    "approve_ticket": {
+        "type": "object",
+        "required": ["ticket_id"],
+        "properties": {"ticket_id": {"type": "string", "minLength": 1, "maxLength": 128}},
+        "additionalProperties": False,
+    },
+    "deny_ticket": {
+        "type": "object",
+        "required": ["ticket_id"],
+        "properties": {"ticket_id": {"type": "string", "minLength": 1, "maxLength": 128}},
+        "additionalProperties": False,
+    },
+    "get_sandbox": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": False,
+    },
+    "verify_audit": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": False,
+    },
+    "mcp_register": {
+        "type": "object",
+        "required": ["server_id", "transport", "endpoint"],
+        "properties": {
+            "server_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-z0-9][a-z0-9._-]*$",
+            },
+            "transport": {"enum": ["stdio", "http"]},
+            "endpoint": {"type": "string", "minLength": 1, "maxLength": 4096},
+            "headers": {"type": "object"},
+            "env": {"type": "object"},
+            "timeout_s": {"type": "number", "minimum": 1, "maximum": 300},
+        },
+        "additionalProperties": False,
+    },
+    "mcp_unregister": {
+        "type": "object",
+        "required": ["server_id"],
+        "properties": {"server_id": {"type": "string", "minLength": 1, "maxLength": 128}},
+        "additionalProperties": False,
+    },
+    "mcp_list": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": False,
+    },
 }
 
 

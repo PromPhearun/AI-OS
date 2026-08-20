@@ -143,6 +143,25 @@ class AgentSession:
     async def cancel_tool(self, call_id: str) -> dict:
         return await self.syscall("cancel_tool", {"call_id": call_id})
 
+    # ------------------------------------------------------ access control
+    async def get_permissions(self) -> dict:
+        """Resolved permission snapshot of this agent (read-only view)."""
+        return await self.syscall("get_permissions")
+
+    async def request_permission(self, tool: str, args: dict, reason: str | None = None) -> dict:
+        """Enqueue an approval ticket for a granted tool (approval gate)."""
+        return await self.syscall(
+            "request_permission", {"tool": tool, "args": args, "reason": reason}
+        )
+
+    async def list_approvals(self, *, all: bool = False) -> list[dict]:
+        """This agent's approval tickets (`all=True` requires operator role)."""
+        return (await self.syscall("list_approvals", {"all": all}))["tickets"]
+
+    async def get_sandbox(self) -> dict:
+        """Introspect this agent's sandbox profile (profile/cwd/env/network)."""
+        return await self.syscall("get_sandbox")
+
     # ------------------------------------------------------- security/util
     async def get_env(self, key: str) -> str:
         return (await self.syscall("get_env", {"key": key}))["value"]

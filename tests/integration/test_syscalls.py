@@ -25,7 +25,8 @@ async def test_get_pid_returns_identity(kernel: Kernel, session) -> None:
 
 @pytest.mark.asyncio
 async def test_spawn_child_from_agent(kernel: Kernel, session) -> None:
-    sc = await session(_base_spec(name="parent"))
+    # Phase 3: spawn is deny-by-default — grant the parent the spawn capability
+    sc = await session(_base_spec(name="parent", capabilities={"spawn": True}))
     child_pid = await sc.spawn(_base_spec(name="child"))
     child = kernel.agent_manager.get(child_pid)
     assert child.parent_pid == sc.pid
@@ -60,7 +61,8 @@ async def test_memory_write_read_roundtrip(kernel: Kernel, session) -> None:
 @pytest.mark.asyncio
 async def test_get_env_returns_configured_value(kernel, session) -> None:
     kernel.vault.set("TEST_TOKEN", "shh")
-    sc = await session()
+    # Phase 3 deny-by-default: only keys in env.allowed_keys resolve via get_env
+    sc = await session(_base_spec(env={"allowed_keys": ["TEST_TOKEN"]}))
     assert await sc.get_env("TEST_TOKEN") == "shh"
 
 

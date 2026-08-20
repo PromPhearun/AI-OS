@@ -96,7 +96,7 @@ async def test_handoff_and_join_end_to_end(kernel: Kernel) -> None:
     async def turn_a(sc) -> bool:
         out["pid_a"] = sc.pid
         await sc.send_msg(
-            out["pid_b"], {"spec": _base_spec(name="e2e-handoff-b", ipc=_IPC)}, type="handoff"
+            out["pid_b"], {"spec": _base_spec(name="e2e-handoff-b", ipc=_IPC, capabilities={"spawn": True})}, type="handoff"
         )
         joined = await sc.join([out["pid_b"]], timeout_ms=5000)
         out["join"] = joined
@@ -116,7 +116,7 @@ async def test_handoff_and_join_end_to_end(kernel: Kernel) -> None:
     AGENT_REGISTRY["e2e-handoff-b"] = {"turn": turn_b, "spec": None}
     try:
         pid_b = await kernel.spawn_agent(
-            _base_spec(name="e2e-handoff-b", ipc=_IPC),
+            _base_spec(name="e2e-handoff-b", ipc=_IPC, capabilities={"spawn": True}),
             runner_factory=lambda pid: AgentRunner(kernel, pid, turn_b).run(),
         )
         pid_a = await kernel.spawn_agent(

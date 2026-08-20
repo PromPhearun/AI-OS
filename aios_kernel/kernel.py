@@ -6,9 +6,11 @@ Ownership map (docs/02-kernel.md §2):
   * memory      — L2 working memory (checkpointed) + L3 long-term store (RAG)
   * workspaces  — one sandboxed directory per agent
   * storage     — durable on-disk checkpoints + the session resume set
-  * vault       — get_env backend (non-secret config; Phase 1)
+  * vault       — secret store backing get_env (Phase 3: persisted, mode 0600)
+  * access      — permission snapshots, RBAC roles, approval tickets (Phase 3)
+  * mcp         — MCP client registry (stdio + http tool servers, Phase 3)
   * llm         — serialized LLM service with per-agent accounting
-  * tools       — Tool Manager (registry + call_tool pipeline)
+  * tools       — Tool Manager (registry + call_tool pipeline + scheduler)
   * fs          — semantic FS (fs_read/write, store_artifact, fs_search)
   * ipc         — IPC Manager (mailboxes, pub/sub, handoffs, join)
   * agent_manager — process table + lifecycle
@@ -22,12 +24,14 @@ from pathlib import Path
 from typing import Any
 
 from . import modules  # noqa: F401  (importing registers every syscall handler)
+from .modules.access import AccessManager
 from .modules.agent_manager import AgentManager
 from .modules.audit import AuditLog
 from .modules.context import ContextManager
 from .modules.fs import SemanticFS
 from .modules.ipc import IPCManager
 from .modules.llm_core import LLMCore
+from .modules.mcp import MCPRegistry
 from .modules.memory import MemoryManager
 from .modules.scheduler import Scheduler
 from .modules.storage import StorageManager
@@ -67,9 +71,14 @@ class Kernel:
             root=(str(self.data_root / "checkpoints") if self.data_root else None),
             session_path=(str(self.data_root / "session.json") if self.data_root else None),
         )
-        self.vault = Vault(self)
+        self.vault = Vault(
+            self,
+            root=(str(self.data_root / "credentials.json") if self.data_root else None),
+        )
+        self.access = AccessManager(self)
         self.llm = LLMCore(self, backend=llm_backend)
         self.tools = ToolManager(self)
+        self.mcp = MCPRegistry(self)
         self.fs = SemanticFS(self)
         self.ipc = IPCManager(self)
         self.agent_manager = AgentManager(self)

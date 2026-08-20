@@ -133,6 +133,23 @@ class MemoryManager:
             self._root.mkdir(parents=True, exist_ok=True)
         self._load_l3()
 
+    # --------------------------------------------------------- secret hygiene
+    def _redact_value(self, value: Any) -> Any:
+        """Recursively scrub vault values before they touch kernel-owned
+        persistence (checkpoints / JSONL logs) or the agent's context.
+        Values already resolved from the vault are the only secrets the kernel
+        can know about; everything else is the agent's own data (docs/
+        08-security.md §5 hard rule: values never enter checkpoints)."""
+        if self.kernel is None or not getattr(self.kernel, "vault", None):
+            return value
+        if isinstance(value, str):
+            return self.kernel.vault.redact(value)
+        if isinstance(value, dict):
+            return {k: self._redact_value(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [self._redact_value(v) for v in value]
+        return value
+
     def namespace_for(self, pid: int) -> str:
         return f"agent:{pid}"
 
@@ -149,7 +166,11 @@ class MemoryManager:
         ttl: float | None = None,
     ) -> None:
         ns = namespace or self.namespace_for(pid)
-        self._mem.setdefault(ns, {})[key] = {"value": value, "ts": time.time(), "ttl": ttl}
+        self._mem.setdefault(ns, {})[key] = {
+            "value": self._redact_value(value),
+            "ts": time.time(),
+            "ttl": ttl,
+        }
 
     def read(self, pid: int, key: str, *, namespace: str | None = None) -> Any:
         ns = namespace or self.namespace_for(pid)
@@ -222,6 +243,7 @@ class MemoryManager:
             json.dumps(value)  # strict: L3 values must survive the JSONL log
         except (TypeError, ValueError) as exc:
             raise AiosError(E_INVAL, f"L3 memory value must be JSON-serializable: {exc}") from exc
+        value = self._redact_value(value)
         embed = await self.embedder.embed(f"{key}: {_text_of(value)}")
         entry = L3Entry(
             ns=ns,
@@ -318,6 +340,7 @@ class MemoryManager:
     ) -> str:
         """Embed and register one written artifact; returns its artifact_id."""
         artifact_id = uuid.uuid4().hex[:12]
+        content = self._redact_value(content)
         embed = await self.embedder.embed(f"{path} {content[:4000]}")
         entry = ArtifactEntry(
             artifact_id=artifact_id,

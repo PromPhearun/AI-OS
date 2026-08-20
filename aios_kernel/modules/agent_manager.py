@@ -83,6 +83,7 @@ class AgentManager:
         self.kernel.audit.record(
             "agent.spawn", pid=pid, spec_name=spec["name"], parent=caller_pid
         )
+        self.kernel.access.spawn(pid, spec)
 
         # Every agent enters the scheduler's ready queue, whether or not an SDK
         # runner drives it; wait_for_grant grants RUNNING at the next slice.
@@ -129,6 +130,7 @@ class AgentManager:
         if pid >= self._next_pid:
             self._next_pid = pid + 1
         self.kernel.audit.record("session.restore", pid=pid, checkpoint=acb.checkpoint_id)
+        self.kernel.access.restore(pid, spec)
         return pid
 
     # ------------------------------------------------------------------- run
@@ -168,6 +170,7 @@ class AgentManager:
         self.kernel.context.free(pid)
         self.kernel.memory.free(pid)
         self.kernel.ipc.free(pid)
+        self.kernel.access.remove(pid)
         self.kernel.agent_logs.pop(pid, None)
         self.kernel.workspaces.remove(pid)
         ev = self._exit_events.pop(pid, None)

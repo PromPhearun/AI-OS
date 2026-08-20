@@ -144,6 +144,16 @@ class Scheduler:
             acb.run_since = None
 
         if acb.usage.turns >= acb.budgets.max_turns:
+            # An agent holding an unresolved approval ticket is *parked*
+            # (checkpointed + SUSPENDED) instead of terminated, so the ticket
+            # survives and `approve` resumes the loop (docs/08-security §7).
+            if self.kernel.access.has_pending(pid):
+                ckpt_id = self.kernel.storage.checkpoint(pid, label="awaiting-approval")
+                acb.checkpoint_id = ckpt_id
+                acb.exit_status = "limit"
+                acb.exit_message = "max_turns reached while awaiting operator approval"
+                transition(acb, AgentState.SUSPENDED, "awaiting-approval")
+                return "suspend"
             acb.exit_status = "limit"
             acb.exit_message = f"max_turns ({acb.budgets.max_turns}) reached"
             transition(acb, AgentState.TERMINATED, "max_turns")

@@ -70,6 +70,8 @@ Permissions are checked at **every** syscall by Access Control:
 - No entry ⇒ denial. There is no wildcard grant.
 - Approval-required actions enqueue a `request_permission` ticket; execution is deferred until
   an operator approves or the ticket expires (default 10 min).
+- An agent that exhausts its turn budget while a ticket is pending is *parked* (checkpointed +
+  suspended), never terminated — approving the ticket resumes its loop (§7 human gates).
 - Agents cannot modify their own permission snapshot (no syscall exists).
 
 ## 4. Sandboxing
@@ -177,7 +179,9 @@ Defense in depth — no single layer is trusted:
 ## 13. Open Design Decisions (to resolve at implementation)
 
 1. **Sandbox default profile** — `subprocess` by default for all agents (recommended), with
-   `container` for declared high-risk tools.
+   `container` for declared high-risk tools. **Resolved (Phase 3):** subprocess is the default
+   (`get_sandbox` returns `profile: subprocess`); in-process execution is opt-in per tool via
+   `sandbox: "inprocess"`.
 2. **OIDC for human auth** — v1 API keys + CLI; OIDC in v1.5.
 3. **At-rest encryption in v1?** — adds KMS/ops complexity; recommend documenting risk and
    enabling AES-256-GCM in v2.

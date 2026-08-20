@@ -126,8 +126,9 @@ Implemented in `aios_kernel/modules/ipc.py` (kernel), `aios_sdk/session.py` +
 
 **Envelope** (`IpcMessage`): `{msg_id, type, from_pid, to_pid, reply_to, topic, body,
 priority, trace_id, created_at, expires_at, sig}`. `sig` is a `sha256:` integrity checksum
-over the canonical envelope payload; the keyed HMAC is deferred to Phase 3 with the audit-log
-hardening. `from_dict` re-signs on load, so checkpointed mailboxes are integrity-anchored.
+over the canonical envelope payload (resolved decision: checksums, not a keyed HMAC —
+tamper-evidence is provided by the hash-chained audit log instead, see `08-security.md` §6).
+`from_dict` re-signs on load, so checkpointed mailboxes are integrity-anchored.
 
 **Syscalls:** `send_msg`, `recv_msg`, `subscribe`, `unsubscribe`, `publish`, `join` — all
 argument-schema-validated (strict, `E_INVAL`), all audited, all exposed as typed SDK methods.

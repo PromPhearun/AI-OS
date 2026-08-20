@@ -41,6 +41,31 @@ class ControlPlane:
     def logs(self, pid: int) -> list[dict]:
         return list(self.kernel.agent_logs.get(pid, []))
 
+    # -------------------------------------------------------------- security
+    def approvals(self, *, all: bool = True) -> list[dict]:
+        """All approval tickets (host-side operator view)."""
+        return self.kernel.access.list_tickets(all=all)
+
+    async def approve(self, ticket_id: str) -> dict:
+        """Approve a pending approval ticket (host-side operator action).
+
+        If the owning agent parked itself while awaiting the decision, the
+        kernel resumes it so the approved tool call can proceed (docs/
+        08-security.md §7 human gates).
+        """
+        return await self.kernel.access.approve(ticket_id)
+
+    def deny(self, ticket_id: str) -> dict:
+        """Deny a pending approval ticket (host-side operator action)."""
+        return self.kernel.access.deny(ticket_id)
+
+    def verify_audit(self) -> dict:
+        """Re-derive the audit hash chain; detect tampering."""
+        return self.kernel.audit.verify()
+
+    def mcp_servers(self) -> list[dict]:
+        return self.kernel.mcp.list_servers()
+
     # ---------------------------------------------------------------- control
     async def suspend(self, pid: int, reason: str = "operator") -> dict:
         return await self.kernel.scheduler.suspend(pid, reason)

@@ -63,6 +63,19 @@ from aios_kernel.syscalls.schema import SCHEMAS, validate_args
         ("fs_write", {"path": "a.md", "content": "hello", "mime": "text/plain"}),
         ("fs_search", {"query": "q3"}),
         ("fs_search", {"query": "q3", "top_k": 3}),
+        ("get_permissions", {}),
+        ("request_permission", {"tool": "fs.write", "args": {"path": "a"}}),
+        ("request_permission", {"tool": "fs.write", "args": {}, "reason": "need it"}),
+        ("list_approvals", {}),
+        ("list_approvals", {"all": True}),
+        ("approve_ticket", {"ticket_id": "apr-abc123"}),
+        ("deny_ticket", {"ticket_id": "apr-abc123"}),
+        ("get_sandbox", {}),
+        ("verify_audit", {}),
+        ("mcp_register", {"server_id": "tools", "transport": "stdio", "endpoint": "python mcp.py"}),
+        ("mcp_register", {"server_id": "web", "transport": "http", "endpoint": "https://x/mcp", "headers": {"Authorization": "Bearer x"}}),
+        ("mcp_unregister", {"server_id": "tools"}),
+        ("mcp_list", {}),
     ],
 )
 def test_valid_args_pass(name, good) -> None:
@@ -127,6 +140,22 @@ def test_valid_args_pass(name, good) -> None:
         ("fs_search", {}),
         ("fs_search", {"query": ""}),
         ("fs_search", {"top_k": 101}),
+        ("request_permission", {}),
+        ("request_permission", {"tool": ""}),
+        ("request_permission", {"tool": "x", "args": "not-an-object"}),
+        ("list_approvals", {"all": "yes"}),
+        ("approve_ticket", {}),
+        ("approve_ticket", {"ticket_id": ""}),
+        ("deny_ticket", {}),
+        ("get_permissions", {"pid": 1}),
+        ("get_sandbox", {"profile": "x"}),
+        ("verify_audit", {"n": 1}),
+        ("mcp_register", {}),
+        ("mcp_register", {"server_id": "a", "transport": "stdio"}),  # missing endpoint
+        ("mcp_register", {"server_id": "a", "transport": "websocket", "endpoint": "x"}),  # bad transport
+        ("mcp_register", {"server_id": "Bad_Name", "transport": "stdio", "endpoint": "x"}),  # id pattern
+        ("mcp_unregister", {}),
+        ("mcp_list", {"x": 1}),
     ],
 )
 def test_invalid_args_raise_e_inval(name, bad) -> None:

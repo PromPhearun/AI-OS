@@ -14,6 +14,59 @@
     },
     "version": { "type": "string", "default": "1" },
     "description": { "type": "string", "maxLength": 500 },
+    "role": {
+      "type": "string",
+      "enum": ["operator", "standard", "restricted", "service"],
+      "default": "standard",
+      "description": "RBAC role (docs/08-security.md §2). Effective permissions = role base capabilities ∪ spec-declared grants."
+    },
+    "env": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Vault key grants for get_env (docs/08-security.md §5). Deny-by-default: a key not listed here returns E_PERM.",
+      "properties": {
+        "allowed_keys": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
+          "default": [],
+          "description": "Secret keys this agent may resolve via get_env (values never enter context/logs/checkpoints)."
+        }
+      }
+    },
+    "approvals": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Approval-ticket policy (docs/08-security.md §3).",
+      "properties": {
+        "max_pending": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 3,
+          "description": "Max concurrent pending request_permission tickets."
+        }
+      }
+    },
+    "sandbox": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Sandbox profile for this agent (docs/08-security.md §4).",
+      "properties": {
+        "profile": {
+          "type": "string",
+          "enum": ["inprocess", "subprocess", "container"],
+          "default": "subprocess"
+        },
+        "network": {
+          "type": "string",
+          "enum": ["none", "http", "all"],
+          "default": "none"
+        },
+        "rlimits": {
+          "type": "object",
+          "description": "Subprocess resource limits (e.g. {'max_cpu_s': 5, 'max_mem_mb': 256})."
+        }
+      }
+    },
     "entry": { "type": "string", "description": "Python import path of the agent definition module (future)." },
     "group_id": { "type": "string", "default": "default" },
     "priority": {
@@ -123,9 +176,24 @@
                 "type": "object",
                 "description": "Per-tool grant configuration (e.g. shell.run allow_commands)."
               },
-              "approved": { "type": "boolean", "default": true }
+              "approved": { "type": "boolean", "default": true },
+              "needs_approval": {
+                "type": "boolean",
+                "default": false,
+                "description": "Route this tool through request_permission before execution (docs/07-tools.md §7)."
+              }
             }
           }
+        },
+        "spawn": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow this agent to spawn children via the `spawn` syscall (deny by default)."
+        },
+        "operator": {
+          "type": "boolean",
+          "default": false,
+          "description": "Operator privileges: approve/deny tickets, register MCP servers, verify the audit log."
         },
         "memory": { "type": "boolean", "default": true, "description": "Allow L2 working-memory syscalls." },
         "context": { "type": "boolean", "default": true, "description": "Allow context read/append syscalls." }

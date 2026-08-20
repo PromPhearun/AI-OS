@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from aios_kernel.errors import (  # noqa: F401  (re-exported for convenience)
     AiosError,
+    E_ABORT,
     E_AGAIN,
     E_BUDGET,
     E_BUSY,
@@ -72,6 +73,10 @@ class AiosTimeoutError(AiosSyscallError):
     pass
 
 
+class AiosAbortError(AiosSyscallError):
+    pass
+
+
 class AiosInternalError(AiosSyscallError):
     pass
 
@@ -88,6 +93,7 @@ _CODE_TO_EXC: dict[str, type] = {
     "E_TOOL": AiosToolError,
     "E_LLM": AiosLlmError,
     "E_TIMEOUT": AiosTimeoutError,
+    "E_ABORT": AiosAbortError,
     "E_INTERNAL": AiosInternalError,
 }
 
@@ -112,6 +118,7 @@ __all__ = [
     "AiosToolError",
     "AiosLlmError",
     "AiosTimeoutError",
+    "AiosAbortError",
     "AiosInternalError",
     "raise_for_error",
     "E_PERM",
@@ -125,5 +132,6 @@ __all__ = [
     "E_TOOL",
     "E_LLM",
     "E_TIMEOUT",
+    "E_ABORT",
     "E_INTERNAL",
 ]

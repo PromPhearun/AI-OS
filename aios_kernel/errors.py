@@ -30,6 +30,7 @@ E_AGAIN = "E_AGAIN"      # temporarily unavailable; retry
 E_TOOL = "E_TOOL"        # tool execution failed
 E_LLM = "E_LLM"          # LLM backend failure
 E_TIMEOUT = "E_TIMEOUT"  # operation timed out
+E_ABORT = "E_ABORT"      # operation aborted (e.g. cancel_tool)
 E_INTERNAL = "E_INTERNAL"  # unexpected internal failure
 
 __all__ = [
@@ -45,5 +46,6 @@ __all__ = [
     "E_TOOL",
     "E_LLM",
     "E_TIMEOUT",
+    "E_ABORT",
     "E_INTERNAL",
 ]

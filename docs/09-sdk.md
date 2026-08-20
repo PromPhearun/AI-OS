@@ -75,6 +75,9 @@ sc.fs_search("the analysis I wrote about costs")
 # Security & usage
 sc.get_env("DB_READONLY_URL")                 # only allowed_keys
 sc.request_permission("code.exec", "run_tests", "verify unit tests pass")
+sc.get_permissions()                          # resolved permission snapshot (read-only)
+sc.list_approvals()                           # this agent's approval tickets
+sc.get_sandbox()                              # {profile, cwd, env_keys, network, rlimits}
 sc.get_usage()
 ```
 
@@ -105,7 +108,11 @@ import aios.control as aio
 pid = aio.launch("specs/research_analyst.json", task="Q3 competitive landscape")
 aio.ps()                      # process table view
 aio.suspend(pid); aio.resume(pid); aio.kill(pid)
-aio.approve_ticket(ticket_id="t-91", allow=True)
+aio.approvals()               # all approval tickets (operator view)
+aio.approve(ticket_id="t-91") # approve → a parked agent resumes its loop
+aio.deny(ticket_id="t-91")    # deny blocks the tool call
+aio.verify_audit()            # audit hash-chain integrity check
+aio.mcp_servers()             # registered MCP servers
 aio.stream_logs(pid)          # agent console + audit events
 aio.attach(pid)               # interactive chat with a running agent
 ```
@@ -146,7 +153,9 @@ request, every tool call is a permissioned kernel call, and its state is kernel-
 
 1. **Agent entry contract** — Python callable signature `(task: dict) -> None` (recommended)
    vs. a declarative-only model (no custom code). The hybrid (declarative spec + optional code)
-   is recommended: many agents need no custom code at all.
+   is recommended: many agents need no custom code at all. **Resolved (Phase 1):** the hybrid
+   landed — `specs/agent.schema.json` defines the declarative agent (tools, budgets, env) and
+   `entry` optionally points to a Python callable invoked with `(task)`.
 2. **Streaming turns** — whether `sc.call_tool`/LLM turns support token streaming to the shell
    (nice UX; adds protocol complexity). Recommend: control-plane streaming only in v1.
 3. **Multiple SDK languages** — Python first (ecosystem); JS/TS control SDK deferred to v1.5

@@ -27,7 +27,12 @@ def _ipc_spec(**overrides) -> dict:
             "can_subscribe": ["*"],
             "can_publish": ["*"],
             "mailbox": {"max_queue_depth": 100, "ttl_s": 3600},
-        }
+        },
+        # Phase 3 deny-by-default: agents that spawn children need the grant
+        capabilities={
+            "tools": [{"name": "fs.read"}, {"name": "fs.write"}],
+            "spawn": True,
+        },
     )
     spec.update(overrides)
     return spec
