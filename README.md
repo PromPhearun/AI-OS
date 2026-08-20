@@ -9,12 +9,44 @@ a classic OS manages processes, but for the agent era.
 
 ## Status
 
-**Phase 0 — Architecture Blueprint.** The full design specification is drafted in [`docs/`](docs/README.md).
-No implementation code yet — this repository currently contains the plan.
+**Phase 1 — MVP Kernel implemented.** Agent lifecycle, syscall ABI, agent scheduler,
+LLM core (mock + OpenAI-compatible backend), in-memory context/memory, 3 built-in
+tools (`fs.read`, `fs.write`, `shell.run`), audit log, and a working CLI. See
+[`docs/11-roadmap.md`](docs/11-roadmap.md) for the phased plan.
 
-## Blueprint
+## Quickstart
 
-The design spec is 15 documents, ~1,900 lines:
+```bash
+# Create a venv and install the package (+ dev extras for tests)
+python3 -m venv .venv
+.venv/bin/pip install -e '.[dev]'
+
+# Run the demo (two example agents: researcher + writer)
+.venv/bin/aios demo
+
+# Run the full test suite (unit / integration / e2e)
+.venv/bin/python -m pytest tests/ -q
+```
+
+Example `aios demo` output:
+
+```
+PID  NAME             STATE       EXIT     TURNS  TOKENS      COST TOOLCALLS
+-----------------------------------------------------------------------------
+   1  researcher       terminated  ok           3     126 $ 0.00000         3
+   2  writer           terminated  ok           2      84 $ 0.00000         2
+```
+
+## Architecture
+
+- **Kernel** (`aios_kernel/`) — the trusted computing base: syscall dispatch, ACB +
+  lifecycle state machine, scheduler (priority + aging, single CPU), LLM core, context /
+  memory / workspace / storage / vault managers, audit log.
+- **SDK** (`aios_sdk/`) — the only library agents import: `@agent` decorator, `AgentSession`
+  syscall client, `ControlPlane` for launch/supervise, `run_agents` launcher.
+- **CLI** (`aios_cli/`) — `aios demo` and `aios run` control surface.
+
+The design specification (15 documents, ~1,900 lines):
 
 | | Document | One-liner |
 |---|---|---|
@@ -46,7 +78,9 @@ docs/11-roadmap.md   # how we'll build it
 
 ## Next Step
 
-When the blueprint is approved, **Phase 0/1** (repo scaffold + MVP kernel) begins per
+**Phase 1 exit criteria are met** (two agents run concurrently with budgets, checkpoint/resume
+works, tool grants are deny-by-default, the audit log records every syscall). Phase 2 — State &
+Memory (on-disk checkpoints, IPC, semantic FS) begins per
 [`docs/11-roadmap.md`](docs/11-roadmap.md).
 
 ---

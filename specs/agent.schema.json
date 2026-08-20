@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aios.dev/schemas/agent.schema.json",
+  "title": "AI OS Agent Spec",
+  "description": "Canonical agent specification document. Validated at spawn; the spec IS the capability list.",
+  "type": "object",
+  "required": ["name", "llm"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{0,63}$",
+      "description": "Unique agent name; also the key of the registered @agent definition."
+    },
+    "version": { "type": "string", "default": "1" },
+    "description": { "type": "string", "maxLength": 500 },
+    "entry": { "type": "string", "description": "Python import path of the agent definition module (future)." },
+    "group_id": { "type": "string", "default": "default" },
+    "priority": {
+      "type": "integer", "minimum": -20, "maximum": 20, "default": 0,
+      "description": "Scheduler priority; higher runs first."
+    },
+    "llm": {
+      "type": "object",
+      "required": ["model"],
+      "additionalProperties": false,
+      "properties": {
+        "model": { "type": "string", "default": "mock" },
+        "system": { "type": "string" },
+        "temperature": { "type": "number", "minimum": 0, "maximum": 2, "default": 0.0 },
+        "max_tokens": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tokens_per_min": { "type": "integer", "minimum": 0, "default": 0 },
+        "cost_per_hour_usd": { "type": "number", "minimum": 0, "default": 0 },
+        "max_wall_clock_s": { "type": "number", "minimum": 0, "default": 0 },
+        "max_tool_calls": { "type": "integer", "minimum": 0, "default": 0 },
+        "max_turns": { "type": "integer", "minimum": 1, "default": 50 }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tools": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "args": {
+                "type": "object",
+                "description": "Per-tool grant configuration (e.g. shell.run allow_commands)."
+              },
+              "approved": { "type": "boolean", "default": true }
+            }
+          }
+        },
+        "memory": { "type": "boolean", "default": true, "description": "Allow L2 working-memory syscalls." },
+        "context": { "type": "boolean", "default": true, "description": "Allow context read/append syscalls." }
+      }
+    }
+  }
+}
