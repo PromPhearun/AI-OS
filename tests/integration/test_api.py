@@ -27,8 +27,8 @@ from aios_api import create_app
 from aios_kernel import Kernel
 from examples.agents import RESEARCHER_SPEC
 
-ALPHA_KEY = "alpha-secret"
-BRAVO_KEY = "bravo-secret"
+ALPHA_KEY = "alpha-test-secret-key-long"
+BRAVO_KEY = "bravo-test-secret-key-long"
 API_KEYS_ENV = f"alice:{ALPHA_KEY}:operator,bob:{BRAVO_KEY}:standard"
 H = {"x-api-key": ALPHA_KEY}
 
@@ -79,10 +79,22 @@ def _token(client) -> str:
 
 # ---------------------------------------------------------------- auth/RBAC
 def test_dev_key_enabled_without_api_keys_env(monkeypatch, tmp_path) -> None:
-    """`aios serve` with no AIOS_API_KEYS boots with the documented dev key."""
+    """`aios serve` with no AIOS_API_KEYS boots with the documented dev key
+    only when AIOS_DEV_KEY=1 is explicitly set."""
     from aios_api.auth import DEV_API_KEY
 
     monkeypatch.delenv("AIOS_API_KEYS", raising=False)
+    # Without AIOS_DEV_KEY, no dev key is enabled.
+    app_no_dev = create_app(
+        Kernel(data_root=str(tmp_path / "no-dev-key")),
+        agents_module="examples.agents",
+    )
+    with TestClient(app_no_dev) as c:
+        r = c.post("/v1/auth/token", json={"api_key": DEV_API_KEY})
+        assert r.status_code == 401
+
+    # With AIOS_DEV_KEY=1, the dev key is enabled.
+    monkeypatch.setenv("AIOS_DEV_KEY", "1")
     app2 = create_app(
         Kernel(data_root=str(tmp_path / "dev-key")),
         agents_module="examples.agents",
@@ -282,6 +294,36 @@ def test_ws_feed(client) -> None:
     with client.websocket_connect(f"/v1/ws/feed?token={token}") as ws:
         msg = ws.receive_json()
         assert msg["type"] in ("audit", "scheduler", "processes")
+
+
+def test_ws_token_exchange(client) -> None:
+    """POST /v1/auth/ws-token issues a one-time token usable for WS auth."""
+    token = _token(client)
+    r = client.post(
+        "/v1/auth/ws-token",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200
+    ws_tok = r.json()["ws_token"]
+    assert isinstance(ws_tok, str) and len(ws_tok) > 20
+    assert r.json()["expires_in"] == 60
+
+    # The WS token authenticates a WebSocket connection.
+    with client.websocket_connect(f"/v1/ws/feed?token={ws_tok}") as ws:
+        msg = ws.receive_json()
+        assert msg["type"] in ("audit", "scheduler", "processes")
+
+    # Single use: the same token must not work a second time.
+    with client.websocket_connect(f"/v1/ws/feed?token={ws_tok}") as ws:
+        # Server should close with 4401 (unauthorized).
+        with pytest.raises(Exception):
+            ws.receive_json(timeout=1)
+
+
+def test_ws_token_requires_auth(client) -> None:
+    """Unauthenticated requests to /v1/auth/ws-token are rejected."""
+    r = client.post("/v1/auth/ws-token")
+    assert r.status_code == 401
 
 
 # --------------------------------------------------------------- rate limiting

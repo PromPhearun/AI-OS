@@ -1,5 +1,27 @@
-/** WebSocket clients for the control-plane streams (token via ?token=). */
+/** WebSocket clients for the control-plane streams.
+
+ * Uses POST /v1/auth/ws-token to exchange the JWT for a short-lived,
+ * single-use token before opening each WebSocket.  Keeps JWTs out of
+ * server/proxy access logs.
+ */
 import type { AgentRecord, AuditEntry, SchedulerSnapshot } from "./types";
+
+/** Fetch a one-time WS handshake token from the control plane. */
+async function fetchWsToken(getToken: () => string | null): Promise<string | null> {
+  const jwt = getToken();
+  if (!jwt) return null;
+  try {
+    const res = await fetch("/v1/auth/ws-token", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${jwt}` },
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { ws_token?: string };
+    return body.ws_token ?? null;
+  } catch {
+    return null;
+  }
+}
 
 function wsUrl(path: string, token: string | null): string {
   const proto = location.protocol === "https:" ? "wss" : "ws";
@@ -30,10 +52,12 @@ export function connectFeed(
   let retries = 0;
   let timer: number | undefined;
 
-  const open = () => {
+  const open = async () => {
     if (closed) return;
     onStatus?.(retries > 0 ? "reconnecting" : "connecting");
-    ws = new WebSocket(wsUrl("/v1/ws/feed", getToken()));
+    const wsToken = await fetchWsToken(getToken);
+    if (closed) return;
+    ws = new WebSocket(wsUrl("/v1/ws/feed", wsToken));
     ws.onopen = () => {
       retries = 0;
       onStatus?.("live");
@@ -75,10 +99,12 @@ export function connectConsole(
   let retries = 0;
   let timer: number | undefined;
 
-  const open = () => {
+  const open = async () => {
     if (closed) return;
-    onStatus?.(retries > 0 ? "connecting" : "connecting");
-    ws = new WebSocket(wsUrl(`/v1/agents/${pid}/ws/console`, getToken()));
+    onStatus?.("connecting");
+    const wsToken = await fetchWsToken(getToken);
+    if (closed) return;
+    ws = new WebSocket(wsUrl(`/v1/agents/${pid}/ws/console`, wsToken));
     ws.onopen = () => {
       retries = 0;
       onStatus?.("live");

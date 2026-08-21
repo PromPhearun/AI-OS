@@ -17,12 +17,15 @@ control plane (Phase 4 — docs/10-ui.md §3, docs/11-roadmap.md §6).
 
 ## Auth
 
-The desktop exchanges an operator API key for a short-lived JWT
-(`POST /v1/auth/token`), which then authenticates every REST call
-(`Authorization: Bearer`) and WebSocket handshake (`?token=`).
+The desktop exchanges an operator API key (minimum 24 characters) for a
+short-lived JWT (`POST /v1/auth/token`), which then authenticates every REST
+call (`Authorization: Bearer`). WebSocket connections use a one-time,
+short-lived token obtained from `POST /v1/auth/ws-token` (passed as `?token=`),
+keeping JWTs out of server/proxy access logs.
 
-With no `AIOS_API_KEYS` set, `aios serve` enables the dev key `dev-key`
-(operator role) — sign in with it in the browser.
+With no `AIOS_API_KEYS` set **and** `AIOS_DEV_KEY=1` in the environment,
+`aios serve` enables the dev key `dev-key` (operator role) — sign in with it
+in the browser.
 
 ### Single sign-on (OIDC + PKCE, Slice 5.3)
 

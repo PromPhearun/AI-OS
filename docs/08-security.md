@@ -223,6 +223,28 @@ Defense in depth — no single layer is trusted:
       deny-by-default (unverified emails never reach `operator`), and no code/verifier/grant
       ever reaches the audit log.
       → `tests/unit/test_oidc.py`, `tests/integration/test_oidc_api.py`.
+- [x] OIDC role mapping fails closed: with no `AIOS_OIDC_ADMIN_EMAILS` or
+      `AIOS_OIDC_OPERATOR_VALUES` configured, every OIDC user receives the `standard` role
+      (not `operator`). Operators are always explicitly granted.
+      → `tests/unit/test_oidc.py::TestRoleMapping::test_default_no_mapping_fails_closed_to_standard`.
+- [x] Dev key requires explicit opt-in: the `dev-key` fallback is only enabled when
+      `AIOS_DEV_KEY=1` is set. Without it (and without `AIOS_API_KEYS`), the control plane
+      rejects all API-key logins.
+      → `tests/integration/test_api.py::test_dev_key_enabled_without_api_keys_env`.
+- [x] WebSocket authentication uses one-time tokens: `POST /v1/auth/ws-token` issues a
+      60-second, single-use token for the WS handshake, keeping JWTs out of server/proxy
+      access logs. Legacy JWT-in-query is still accepted for backward compatibility.
+      → `tests/integration/test_api.py::test_ws_token_exchange`,
+      `::test_ws_token_requires_auth`.
+- [x] Minimum API key length enforced at 24 characters (operator-configured keys; the
+      built-in dev key is exempt).
+      → `aios_api/auth.py::ApiKey.__post_init__`.
+- [x] Request body size limit (2 MiB) rejects oversized payloads with 413 before they
+      reach route handlers.
+      → `aios_api/security.py::BodySizeLimitMiddleware`.
+- [x] Auth error messages are generic: JWT decode failures return "invalid token" or
+      "token expired" — no exception details, role names, or algorithm names leak to callers.
+      → `aios_api/auth.py::AuthManager.verify_token`.
 
 ## 13. Open Design Decisions (to resolve at implementation)
 

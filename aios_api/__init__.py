@@ -31,6 +31,7 @@ from .errors import register_exception_handlers
 from .oidc import OidcClient, OidcConfig
 from .routes import router
 from .security import (
+    BodySizeLimitMiddleware,
     DEFAULT_CORS_ORIGINS,
     ControlAuditMiddleware,
     RateLimiter,
@@ -94,7 +95,8 @@ def create_app(
             importlib.import_module(agents_module)
         if auth.dev_enabled:
             logger.warning(
-                "no AIOS_API_KEYS configured — dev key 'dev-key' (operator role) enabled"
+                "AIOS_DEV_KEY=1 — dev key 'dev-key' (operator role) enabled; "
+                "NEVER use in production"
             )
         if auth.generated_secret:
             logger.warning(
@@ -105,7 +107,7 @@ def create_app(
             if not oidc_client.config.admin_emails and not oidc_client.config.operator_values:
                 logger.warning(
                     "OIDC enabled with no AIOS_OIDC_ADMIN_EMAILS / AIOS_OIDC_OPERATOR_VALUES — "
-                    "every authenticated OIDC user receives the operator role"
+                    "every authenticated OIDC user receives the standard role (fail-closed)"
                 )
         yield
         if shutdown_on_exit:
@@ -135,6 +137,7 @@ def create_app(
     # rejections and CORS preflights are also recorded; CORS answers preflights
     # without reaching the rate limiter.
     app.add_middleware(SecurityHeadersMiddleware)
+    app.add_middleware(BodySizeLimitMiddleware)
     app.add_middleware(RateLimitMiddleware, limiter=limiter)
     app.add_middleware(
         CORSMiddleware,

@@ -62,7 +62,8 @@ items are green (`tests/unit/test_vault.py`, `test_access.py`, `test_audit_chain
 **Phase 4 — Surfaces & Scale implemented.** The REST/WebSocket control plane
 (`aios_api/`, docs/10-ui.md §4) exposes agent lifecycle, scheduler/LLM health,
 approvals, audit, and semantic fs search over JWT-authenticated endpoints with
-rate limiting, strict security headers, and a kernel-audited request log; the
+rate limiting, strict security headers, request body size limits (2 MiB),
+one-time WebSocket handshake tokens, and a kernel-audited request log; the
 **web desktop** (`web/`, React + TypeScript + Vite) is served same-origin by
 `aios serve` at `http://127.0.0.1:8000/` (login with the dev key `dev-key`, or
 set `AIOS_API_KEYS`), with live WebSocket panels for processes, scheduler,
@@ -185,7 +186,7 @@ docs/11-roadmap.md   # how we'll build it
 AES-256-GCM at-rest encryption seals the vault and checkpoint snapshots behind
 `AIOS_MASTER_KEY` / `AIOS_ENCRYPT=1`, the container sandbox profile (Slice 5.2), OIDC + PKCE
 human auth (Slice 5.3), and the multi-kernel IPC broker (Slice 5.4) are all shipped, and
-**461 tests pass**. The only remaining item per
+**463 tests pass**. The only remaining item per
 [`docs/11-roadmap.md`](docs/11-roadmap.md) is the **optional** Rust hot paths (checkpoint
 serialization, scheduler core), to be added only where the Phase 4 benchmarks measure them hot.
 

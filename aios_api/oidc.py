@@ -509,10 +509,11 @@ class OidcClient:
     def resolve_principal(self, claims: dict, userinfo: dict | None = None) -> Principal:
         """Map OIDC claims to a control-plane Principal.
 
-        Deny-by-default in the explicit direction: when ``admin_emails`` or
-        ``operator_values`` is configured the user is ``operator`` only on a
-        match and ``standard`` otherwise; with neither configured, every
-        authenticated user is ``operator`` (documented, warned at boot).
+        Deny-by-default: when ``admin_emails`` or ``operator_values`` is
+        configured the user is ``operator`` only on a match and ``standard``
+        otherwise; with neither configured, every authenticated OIDC user
+        receives the ``standard`` role (fail-closed).  Operators are always
+        explicitly granted.
         """
         merged = dict(claims)
         merged.update(userinfo or {})
@@ -538,7 +539,8 @@ class OidcClient:
             if values and any(str(v) in self.config.operator_values for v in values):
                 return "operator"
             return "standard"
-        return "operator"
+        # No explicit role mapping configured — fail-closed to standard.
+        return "standard"
 
 
 __all__ = [

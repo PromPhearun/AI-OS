@@ -1,13 +1,17 @@
 """WebSocket streams for the web desktop.
 
-Two authenticated (JWT via ``?token=``) streams:
+Two authenticated streams:
 
 * ``/v1/ws/feed`` — global live feed: scheduler snapshot (1 Hz), process
   table deltas, and new audit entries as they land.
 * ``/v1/agents/{pid}/ws/console`` — tail of an agent's console log lines.
 
-Credentials never travel over the wire after the handshake token, and audit
-entries are sent verbatim (they carry no secrets by construction).
+Authentication uses a one-time, short-lived token issued by
+``POST /v1/auth/ws-token`` (passed as ``?token=``).  Legacy JWT-in-query
+is still accepted but the web desktop is expected to use the WS token
+exchange.  Credentials never travel over the wire after the handshake
+token, and audit entries are sent verbatim (they carry no secrets by
+construction).
 """
 
 from __future__ import annotations
@@ -25,8 +29,14 @@ async def _ws_principal(websocket: WebSocket) -> Principal | None:
     token = websocket.query_params.get("token", "")
     if not token:
         return None
+    auth = websocket.app.state.auth
+    # Try the single-use WS token store first (preferred path).
+    principal = auth.consume_ws_token(token)
+    if principal is not None:
+        return principal
+    # Fall back to JWT verification (backward compatibility).
     try:
-        return websocket.app.state.auth.verify_token(token)
+        return auth.verify_token(token)
     except ValueError:
         return None
 

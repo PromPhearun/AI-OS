@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from aios_kernel.errors import AiosError, E_NOENT
 from aios_sdk.agent import AGENT_REGISTRY, AgentRunner
 
-from .auth import Principal
+from .auth import AuthManager, Principal
 from .deps import get_kernel, require_auth, require_operator
 from .oidc import GRANT_COOKIE, GRANT_TTL_S, OidcClient, OidcError
 
@@ -103,6 +103,22 @@ async def issue_token(req: TokenRequest, request: Request):
         "role": principal.role,
         "name": principal.name,
     }
+
+
+@router.post("/v1/auth/ws-token")
+async def issue_ws_token(
+    request: Request,
+    principal: Principal = Depends(require_auth),
+):
+    """Issue a one-time, short-lived token for WebSocket authentication.
+
+    The web desktop exchanges its JWT for a single-use token (60 s TTL) and
+    passes that as ``?token=`` on the WebSocket URL.  This keeps JWTs out of
+    server/proxy access logs.
+    """
+    auth: AuthManager = request.app.state.auth
+    tok = auth.issue_ws_token(principal)
+    return {"ws_token": tok, "expires_in": auth._WS_TOKEN_TTL_S}
 
 
 # ------------------------------------------------------------------ oidc

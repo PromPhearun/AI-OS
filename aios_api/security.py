@@ -135,6 +135,35 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
+MAX_BODY_BYTES = 2 * 1024 * 1024  # 2 MiB
+
+
+class BodySizeLimitMiddleware(BaseHTTPMiddleware):
+    """Reject request bodies that exceed MAX_BODY_BYTES (default 2 MiB).
+
+    Prevents memory exhaustion from oversized JSON payloads.  Streaming
+    uploads (multipart/file routes) should use their own size guards.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        content_length = request.headers.get("content-length")
+        if content_length is not None:
+            try:
+                if int(content_length) > MAX_BODY_BYTES:
+                    return JSONResponse(
+                        status_code=413,
+                        content={
+                            "error": {
+                                "code": "E_INVAL",
+                                "message": "request body too large",
+                            }
+                        },
+                    )
+            except ValueError:
+                pass  # malformed Content-Length — let FastAPI handle it
+        return await call_next(request)
+
+
 class ControlAuditMiddleware(BaseHTTPMiddleware):
     """Record every control request to the kernel audit trail.
 
@@ -173,6 +202,8 @@ class ControlAuditMiddleware(BaseHTTPMiddleware):
 __all__ = [
     "SECURITY_HEADERS",
     "DEFAULT_CORS_ORIGINS",
+    "MAX_BODY_BYTES",
+    "BodySizeLimitMiddleware",
     "RateLimiter",
     "RateLimitMiddleware",
     "SecurityHeadersMiddleware",

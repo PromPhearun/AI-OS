@@ -242,10 +242,11 @@ class TestRoleMapping:
     def _config(self, **kwargs) -> OidcConfig:
         return OidcConfig(issuer=ISSUER, client_id=CLIENT_ID, **kwargs)
 
-    def test_default_all_users_operator(self) -> None:
+    def test_default_no_mapping_fails_closed_to_standard(self) -> None:
+        """With no role mapping configured, all OIDC users get standard (fail-closed)."""
         client = OidcClient(self._config())
         p = client.resolve_principal({"sub": "u1"})
-        assert p.role == "operator"
+        assert p.role == "standard"
 
     def test_admin_email_match(self) -> None:
         client = OidcClient(self._config(admin_emails=frozenset({"alice@example.com"})))
