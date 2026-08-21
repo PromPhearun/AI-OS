@@ -74,7 +74,7 @@ throughput (tasks/min), and checkpoint I/O cost.
 
 See [`docs/11-roadmap.md`](docs/11-roadmap.md) for the phased plan.
 
-**Phase 5 — Hardening in progress.** Slice 5.0 added CI
+**Phase 5 — Hardening implemented.** Slice 5.0 added CI
 (`.github/workflows/ci.yml`: compileall, full pytest suite, acceptance benchmarks, web
 build — green on every push/PR). Slice 5.1 ships **AES-256-GCM at-rest encryption** for
 the secret vault and checkpoint snapshots: set `AIOS_MASTER_KEY` (64 hex chars or base64)
@@ -85,11 +85,21 @@ is unreadable without the key — a wrong key or tampering fails closed
 allowlisted `shell.run` argv as `docker run` with a read-only rootfs, `--cap-drop ALL`,
 `no-new-privileges`, Docker's default seccomp, a workspace-only mount, per-spec rlimits, and a
 network egress allowlist (`none` / `http` via `AIOS_EGRESS_PROXY` / `all`) — a missing daemon
-fails closed (`E_BUSY`) and host secrets never reach the container or the docker CLI. Slice 5.4
+fails closed (`E_BUSY`) and host secrets never reach the container or the docker CLI. Slice 5.3
+ships **OIDC + PKCE human authentication** (`aios_api/oidc.py`, docs/10-ui.md §4): the control
+plane runs the authorization-code + PKCE (RFC 7636) flow with OpenID discovery and JWKS
+verification (RS256/ES256 only — `alg=none`, symmetric `HS*`, and tampered tokens are rejected),
+ID-token claim validation (issuer/audience/expiry/nonce), single-use server-side stores for PKCE
+transactions and the post-login grant cookie (HttpOnly, path-scoped, hash-at-rest), and
+deny-by-default role mapping (`AIOS_OIDC_ADMIN_EMAILS` / `AIOS_OIDC_OPERATOR_VALUES`; unverified
+emails are demoted); the web desktop adds a *Sign in with SSO* button and auto-exchanges the
+grant for a JWT exactly once per page load. Slice 5.4
 ships the **multi-kernel IPC broker** (`aios_kernel/modules/broker.py`, docs/06-ipc.md §11):
 two kernels share one broker behind the existing IPC API (global pid space, cross-kernel
 send/publish), over an in-process `Broker` or a token-authenticated TCP bridge
-(`BrokerServer`/`BrokerClient`, `AIOS_BROKER_TOKEN`).
+(`BrokerServer`/`BrokerClient`, `AIOS_BROKER_TOKEN`). The full suite is green — **461 tests
+pass** — and the only remaining roadmap item is the *optional* Rust hot paths, informed by
+the Phase 4 benchmarks.
 
 ## Quickstart
 
@@ -170,13 +180,14 @@ docs/11-roadmap.md   # how we'll build it
 
 ## Next Step
 
-**Phase 5 — Hardening is in progress.** CI gates every push (`.github/workflows/ci.yml`:
-compileall, full pytest suite, acceptance benchmarks, web build), AES-256-GCM at-rest encryption
-seals the vault and checkpoint snapshots behind `AIOS_MASTER_KEY` / `AIOS_ENCRYPT=1`, and the
-container sandbox profile (Slice 5.2) plus the multi-kernel IPC broker (Slice 5.4) are
-implemented — `413` tests pass. Remaining slices per
-[`docs/11-roadmap.md`](docs/11-roadmap.md): OIDC + PKCE human auth and optional Rust hot paths
-informed by benchmarks.
+**All required roadmap phases (0–5) are implemented.** CI gates every push
+(`.github/workflows/ci.yml`: compileall, full pytest suite, acceptance benchmarks, web build),
+AES-256-GCM at-rest encryption seals the vault and checkpoint snapshots behind
+`AIOS_MASTER_KEY` / `AIOS_ENCRYPT=1`, the container sandbox profile (Slice 5.2), OIDC + PKCE
+human auth (Slice 5.3), and the multi-kernel IPC broker (Slice 5.4) are all shipped, and
+**461 tests pass**. The only remaining item per
+[`docs/11-roadmap.md`](docs/11-roadmap.md) is the **optional** Rust hot paths (checkpoint
+serialization, scheduler core), to be added only where the Phase 4 benchmarks measure them hot.
 
 ---
 

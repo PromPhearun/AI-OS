@@ -40,7 +40,7 @@ communication, tool access, persistence, and security.
 
 | Doc | Status |
 |---|---|
-| 00–13 | ✅ Drafted (v0.1) |
+| 00–13 | ✅ Drafted (v0.1) — all required roadmap phases (0–5) implemented; see [`11-roadmap.md`](11-roadmap.md) |
 
 ## Conventions Used Across This Spec
 

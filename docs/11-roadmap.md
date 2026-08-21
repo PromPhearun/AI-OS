@@ -170,7 +170,7 @@ covering fairness (10 heterogeneous agents — bounded starvation), throughput
 
 ## 7. Phase 5 — Hardening (detail)
 
-**Status: in progress** — Slices 5.0–5.4 are landed (CI, at-rest encryption, container sandbox, OIDC for humans, multi-kernel broker); the optional Rust hot paths remain.
+**Status: complete** — Slices 5.0–5.4 are landed (CI, at-rest encryption, container sandbox, OIDC for humans, multi-kernel broker); only the *optional* Rust hot paths remain, to be added where the Phase 4 benchmarks measure them hot.
 
 - [x] **5.0 CI + docs** — `.github/workflows/ci.yml` gates every push/PR:
       `compileall`, the full pytest suite (unit/integration/e2e), the acceptance benchmarks
