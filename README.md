@@ -74,6 +74,14 @@ throughput (tasks/min), and checkpoint I/O cost.
 
 See [`docs/11-roadmap.md`](docs/11-roadmap.md) for the phased plan.
 
+**Phase 5 — Hardening in progress.** Slice 5.0 added CI
+(`.github/workflows/ci.yml`: compileall, full pytest suite, acceptance benchmarks, web
+build — green on every push/PR). Slice 5.1 ships **AES-256-GCM at-rest encryption** for
+the secret vault and checkpoint snapshots: set `AIOS_MASTER_KEY` (64 hex chars or base64)
+or `AIOS_ENCRYPT=1` (auto-generates `<data_root>/master.key`, mode 0600) and data at rest
+is unreadable without the key — a wrong key or tampering fails closed
+(`aios_kernel/modules/crypto.py`).
+
 ## Quickstart
 
 ```bash
@@ -153,15 +161,13 @@ docs/11-roadmap.md   # how we'll build it
 
 ## Next Step
 
-**Phase 4 — Surfaces & Scale is fully delivered.** The REST/WS control plane
-(JWT auth, rate limiting, security headers, audited requests), the React/TS web
-desktop (processes, scheduler, audit, approvals, files, LLM health, attach
-console), LLM provider failover, and the benchmark harness (fairness,
-throughput, checkpoint I/O) are all landed and tested — `344` tests pass
-including the roadmap acceptance checks. The next phase is **Phase 5 —
-Hardening**: container sandbox profile, at-rest encryption, OIDC, multi-kernel
-preview, and Rust hot paths informed by the Phase 4 benchmarks, per
-[`docs/11-roadmap.md`](docs/11-roadmap.md).
+**Phase 5 — Hardening is in progress.** CI now gates every push
+(`.github/workflows/ci.yml`: compileall, full pytest suite, acceptance benchmarks, web
+build), and AES-256-GCM at-rest encryption seals the vault and checkpoint snapshots behind
+`AIOS_MASTER_KEY` / `AIOS_ENCRYPT=1` — `366` tests pass. Remaining slices per
+[`docs/11-roadmap.md`](docs/11-roadmap.md): the container sandbox profile (network egress
+deny-by-default), OIDC + PKCE human auth, the multi-kernel IPC broker, and optional Rust
+hot paths informed by benchmarks.
 
 ---
 

@@ -170,12 +170,21 @@ covering fairness (10 heterogeneous agents — bounded starvation), throughput
 
 ## 7. Phase 5 — Hardening (detail)
 
-- Container sandbox profile (Docker/seccomp, network egress allowlist).
-- At-rest encryption (AES-256-GCM) for checkpoints/artifacts.
-- OIDC for humans; optional KMS for secrets.
-- Multi-kernel preview: two kernels sharing IPC through a broker behind the existing IPC API.
-- Optional Rust hot paths (checkpoint serialization, scheduler core) — informed by Phase 4
-  benchmarks; only where measured hot.
+**Status: in progress** — Slice 5.0 (CI) and Slice 5.1 (at-rest encryption) are landed.
+
+- [x] **5.0 CI + docs** — `.github/workflows/ci.yml` gates every push/PR:
+      `compileall`, the full pytest suite (unit/integration/e2e), the acceptance benchmarks
+      (`pytest -m benchmark`), and the web desktop production build. Security acceptance
+      items in `08-security.md` §12 are ticked with exact test references.
+- [x] **5.1 At-rest encryption** — AES-256-GCM seals the vault (`credentials.json`) and
+      checkpoint snapshots (`snapshot.json`): `AIOS_MASTER_KEY` (hex/base64) wins over
+      `AIOS_ENCRYPT=1` → `<data_root>/master.key` (0600, atomic); manifest hash covers the
+      ciphertext + GCM auth, wrong key/tamper fails closed. Overhead: +36 B per snapshot.
+- [ ] Container sandbox profile (Docker/seccomp, network egress allowlist).
+- [ ] OIDC for humans; optional KMS for secrets.
+- [ ] Multi-kernel preview: two kernels sharing IPC through a broker behind the existing IPC API.
+- [ ] Optional Rust hot paths (checkpoint serialization, scheduler core) — informed by Phase 4
+      benchmarks; only where measured hot.
 
 ## 8. Testing Strategy
 

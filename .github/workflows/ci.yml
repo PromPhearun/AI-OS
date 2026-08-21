@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Python — compile + pytest (incl. acceptance benchmarks)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install package (+ dev extras)
+        run: pip install -e ".[dev]"
+      - name: Compile check (all packages import-clean)
+        run: python -m compileall -q aios_kernel aios_sdk aios_cli aios_api benchmarks
+      - name: Unit + integration + e2e tests
+        run: python -m pytest -q -m "not benchmark"
+      - name: Acceptance benchmarks (mock LLM; fairness / throughput / checkpoint I/O)
+        run: python -m pytest -q -m benchmark
+
+  web:
+    name: Web desktop — production build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+        working-directory: web
+      - name: Build (tsc --noEmit && vite build)
+        run: npm run build
+        working-directory: web

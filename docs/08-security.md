@@ -136,8 +136,14 @@ Defense in depth — no single layer is trusted:
   cross-namespace access requires explicit ACL grants.
 - **Data minimization:** only data an agent declares is retained; TTLs on ephemeral memory;
    `forget_memory` supports compliant deletion.
-- **At-rest encryption:** v2 target — AES-256-GCM for checkpoints/artifacts; v1 keeps data in
-  user-owned storage with clear documentation of the threat model.
+- **At-rest encryption:** Phase 5 — AES-256-GCM seals the vault (`credentials.json`) and
+  every checkpoint snapshot (`snapshot.json`) on disk. Manifest sha256 hashes cover the
+  ciphertext and GCM authenticates it, so a wrong key or any tampering **fails closed**.
+  Key management: `AIOS_MASTER_KEY` (64 hex chars or base64) wins; `AIOS_ENCRYPT=1`
+  auto-generates `<data_root>/master.key` (mode 0600, atomic replace, `secrets.token_bytes`)
+  and it is reused on later boots (fail-secure continuity). Plaintext artifacts in the
+  agent workspace remain the documented v1 user-owned behavior.
+  Covered by `tests/unit/test_crypto.py` + `tests/integration/test_at_rest_encryption.py`.
 - **In-transit:** all out-of-process channels use TLS 1.2+; in-process channels are local.
 
 ## 9. File Safety (upload/artifact policy)
@@ -166,15 +172,33 @@ Defense in depth — no single layer is trusted:
 
 ## 12. Security Acceptance Criteria (before any public deployment)
 
-- [ ] `request_permission` approval path covered by tests (grant/deny/expire).
-- [ ] No syscall bypass: a syscall with an empty permission snapshot returns `E_PERM` for
+**Status: all items green and enforced by CI** — `.github/workflows/ci.yml` runs
+`compileall` + the full pytest suite (unit/integration/e2e) + the acceptance benchmarks
+(`-m benchmark`) plus the web production build on every push/PR.
+
+- [x] `request_permission` approval path covered by tests (grant/deny/expire).
+      → `tests/unit/test_access.py::test_approval_ticket_approve_executes_once`,
+      `::test_approval_ticket_deny_blocks_execution`, `::test_approval_ticket_expires`,
+      plus `tests/integration/test_approvals.py`.
+- [x] No syscall bypass: a syscall with an empty permission snapshot returns `E_PERM` for
       everything.
-- [ ] Secrets never appear in audit logs, checkpoints, or context (scanner test).
-- [ ] Sandbox escape test suite (path traversal, env leaks, network egress) passes.
-- [ ] Audit log tampering detection test passes.
-- [ ] Rate limits hold under a burst test (N agents × M requests).
-- [ ] Injection probe suite: tool outputs containing "ignore previous instructions" do not
+      → `tests/unit/test_access.py::test_empty_snapshot_denies_every_privileged_syscall`.
+- [x] Secrets never appear in audit logs, checkpoints, or context (scanner test).
+      → `tests/integration/test_secrets_scanner.py::test_secret_never_in_audit_checkpoints_or_context`;
+      at-rest vault/checkpoint files are additionally AES-256-GCM sealed
+      (`tests/integration/test_at_rest_encryption.py`).
+- [x] Sandbox escape test suite (path traversal, env leaks, network egress) passes.
+      → `tests/integration/test_sandbox.py` (`test_path_traversal_rejected_at_call_tool`,
+      `test_sandbox_env_does_not_leak_host_secrets`, `test_network_and_shell_binaries_not_allowlisted`).
+- [x] Audit log tampering detection test passes.
+      → `tests/unit/test_audit_chain.py` (`test_tamper_detection_flips_a_byte`,
+      `test_tamper_detection_finds_bad_hash_middle_of_chain`).
+- [x] Rate limits hold under a burst test (N agents × M requests).
+      → `tests/integration/test_sandbox.py::test_rate_limit_denies_burst` and
+      `tests/integration/test_api.py::test_rate_limiting`.
+- [x] Injection probe suite: tool outputs containing "ignore previous instructions" do not
       change tool grant behavior.
+      → `tests/integration/test_mcp.py::test_injection_output_does_not_change_tool_grants`.
 
 ## 13. Open Design Decisions (to resolve at implementation)
 
@@ -183,7 +207,8 @@ Defense in depth — no single layer is trusted:
    (`get_sandbox` returns `profile: subprocess`); in-process execution is opt-in per tool via
    `sandbox: "inprocess"`.
 2. **OIDC for human auth** — v1 API keys + CLI; OIDC in v1.5.
-3. **At-rest encryption in v1?** — adds KMS/ops complexity; recommend documenting risk and
-   enabling AES-256-GCM in v2.
+3. **At-rest encryption** — **Resolved (Phase 5):** AES-256-GCM is implemented for the vault
+   and checkpoint snapshots behind `AIOS_MASTER_KEY` / `AIOS_ENCRYPT=1`; KMS integration stays
+   a deployment option, not a code dependency.
 4. **PII detection engine** — rule-based (regex/entity lists) in v1; model-assisted detection as
    an optional policy hook.

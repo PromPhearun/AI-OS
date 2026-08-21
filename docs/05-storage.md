@@ -48,6 +48,12 @@ aios-data/
 > **Slice 2.2:** the snapshot now also carries `mailbox` (envelopes, re-signed on load)
 > and `subscriptions`, so an agent resumed after a crash wakes to a faithful IPC state
 > (see `06-ipc.md` §10).
+>
+> **Phase 5 (Slice 5.1):** `snapshot.json` is sealed with AES-256-GCM at rest when the
+> kernel has a master key (`AIOS_MASTER_KEY`, or `AIOS_ENCRYPT=1` → `<root>/master.key`
+> mode 0600). The manifest `hash` covers the ciphertext on disk and GCM authenticates it,
+> so a wrong key or any tampering fails closed (`docs/08-security.md` §8). The plaintext
+> layout below is unchanged when no key is present (v1 behavior).
 
 A checkpoint is the **unit of resumability**:
 
