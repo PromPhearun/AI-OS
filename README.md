@@ -58,6 +58,20 @@ detects tampering and unparseable records. All `docs/08-security.md` §12 accept
 items are green (`tests/unit/test_vault.py`, `test_access.py`, `test_audit_chain.py`;
 `tests/integration/test_mcp.py`, `test_sandbox.py`, `test_approvals.py`,
 `test_secrets_scanner.py`).
+
+**Phase 4 — Surfaces & Scale implemented.** The REST/WebSocket control plane
+(`aios_api/`, docs/10-ui.md §4) exposes agent lifecycle, scheduler/LLM health,
+approvals, audit, and semantic fs search over JWT-authenticated endpoints with
+rate limiting, strict security headers, and a kernel-audited request log; the
+**web desktop** (`web/`, React + TypeScript + Vite) is served same-origin by
+`aios serve` at `http://127.0.0.1:8000/` (login with the dev key `dev-key`, or
+set `AIOS_API_KEYS`), with live WebSocket panels for processes, scheduler,
+audit, approvals, files, and LLM providers plus an attach console. LLM core
+gains **provider failover** (`spec.llm.provider`/`failover`/`max_retries`,
+per-provider health via `GET /v1/llm`), and a **benchmark harness**
+(`benchmarks/`, `aios bench`) measures scheduler fairness (bounded starvation),
+throughput (tasks/min), and checkpoint I/O cost.
+
 See [`docs/11-roadmap.md`](docs/11-roadmap.md) for the phased plan.
 
 ## Quickstart
@@ -72,6 +86,14 @@ python3 -m venv .venv
 
 # Run the full test suite (unit / integration / e2e)
 .venv/bin/python -m pytest tests/ -q
+
+# Control plane: REST + WebSocket + web desktop at http://127.0.0.1:8000/
+.venv/bin/aios serve
+#   web desktop  -> http://127.0.0.1:8000/      (login: dev-key, operator role)
+#   Swagger docs -> http://127.0.0.1:8000/docs
+
+# Phase 4 benchmarks (fairness / throughput / checkpoint I/O)
+.venv/bin/aios bench
 ```
 
 Example `aios demo` output:
@@ -90,7 +112,14 @@ PID  NAME             STATE       EXIT     TURNS  TOKENS      COST TOOLCALLS
   memory / workspace / storage / vault managers, audit log.
 - **SDK** (`aios_sdk/`) — the only library agents import: `@agent` decorator, `AgentSession`
   syscall client, `ControlPlane` for launch/supervise, `run_agents` launcher.
-- **CLI** (`aios_cli/`) — `aios demo`, `aios run`, and `aios resume` control surface.
+- **CLI** (`aios_cli/`) — `aios demo`, `aios run`, `aios resume`, `aios serve`
+  (control plane), and `aios bench` (Phase 4 benchmarks) control surfaces.
+- **API** (`aios_api/`) — FastAPI REST/WebSocket control plane with JWT auth,
+  rate limiting, security headers, and a kernel-audited request log.
+- **Web desktop** (`web/`) — React + TypeScript + Vite operator dashboard,
+  served same-origin by `aios serve` when built (`npm run build` in `web/`).
+- **Benchmarks** (`benchmarks/`) — scheduler fairness, throughput, and
+  checkpoint I/O harness; reports land in `benchmarks/reports/`.
 
 The design specification (15 documents, ~1,900 lines):
 
@@ -124,14 +153,15 @@ docs/11-roadmap.md   # how we'll build it
 
 ## Next Step
 
-**Phase 3 — Tooling & Security is fully delivered.** The MCP client (stdio + HTTP),
-tool scheduler + subprocess sandboxes, access control with approval tickets, the
-secret vault, and audit-log hashing are all landed and tested — every
-`docs/08-security.md` §12 acceptance criterion is green (approval grant/deny/expire,
-empty-snapshot `E_PERM`, secrets scanner, sandbox escape suite, audit tamper
-detection, rate-limit burst, injection probes). The next phase is **Phase 4 —
-Surfaces & Scale**: web desktop, REST/WS control API, provider failover, and the
-benchmark harness, per [`docs/11-roadmap.md`](docs/11-roadmap.md).
+**Phase 4 — Surfaces & Scale is fully delivered.** The REST/WS control plane
+(JWT auth, rate limiting, security headers, audited requests), the React/TS web
+desktop (processes, scheduler, audit, approvals, files, LLM health, attach
+console), LLM provider failover, and the benchmark harness (fairness,
+throughput, checkpoint I/O) are all landed and tested — `344` tests pass
+including the roadmap acceptance checks. The next phase is **Phase 5 —
+Hardening**: container sandbox profile, at-rest encryption, OIDC, multi-kernel
+preview, and Rust hot paths informed by the Phase 4 benchmarks, per
+[`docs/11-roadmap.md`](docs/11-roadmap.md).
 
 ---
 

@@ -59,7 +59,7 @@ class AgentManager:
         async ``run(pid)`` coroutine — supplied by the SDK at connect time.
         """
         validate_spec(spec)
-        self.kernel.llm.validate_model(spec["llm"]["model"])
+        self.kernel.llm.validate_llm_spec(spec.get("llm", {}))
 
         pid = self._allocate_pid()
         acb = AgentControlBlock(
@@ -210,6 +210,9 @@ class AgentManager:
             task.cancel()
         acb.exit_status = "killed"
         acb.exit_message = reason
+        # Transition first so the tombstone records `terminated`, not the
+        # stale state the agent held when it was killed mid-flight.
+        transition(acb, AgentState.TERMINATED, "kill")
         self.kernel.audit.record("agent.kill", pid=pid, reason=reason)
         self._drop(pid)
 

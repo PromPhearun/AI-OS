@@ -1,0 +1,140 @@
+{
+  "timestamp": "2026-08-21T09:24:15+0800",
+  "data_root": "/var/folders/hn/lxrtkvqn1dl1xvykx8f1740m0000gn/T/aios-bench-xp2jbxpy",
+  "elapsed_s": 1.625,
+  "fairness": {
+    "benchmark": "fairness",
+    "agents": 10,
+    "wall_s": 1.146,
+    "dispatches": 130,
+    "preemptions": 10,
+    "avg_wait_ms": 58.53,
+    "max_wait_ms": 228.74,
+    "starvation_ratio": 3.908,
+    "util_mean_pct": 5.46,
+    "util_max_pct": 8.87,
+    "ready_peak": 10,
+    "turns_total": 60,
+    "tasks_min": 3140.53,
+    "starvation_threshold_ms": 20000.0,
+    "passed": true,
+    "per_agent": [
+      {
+        "pid": 1,
+        "priority": 0,
+        "turns": 5,
+        "wait_count": 11,
+        "avg_wait_ms": 92.61,
+        "max_wait_ms": 214.29
+      },
+      {
+        "pid": 2,
+        "priority": 1,
+        "turns": 6,
+        "wait_count": 13,
+        "avg_wait_ms": 75.15,
+        "max_wait_ms": 145.58
+      },
+      {
+        "pid": 3,
+        "priority": 2,
+        "turns": 7,
+        "wait_count": 15,
+        "avg_wait_ms": 58.92,
+        "max_wait_ms": 143.38
+      },
+      {
+        "pid": 4,
+        "priority": 3,
+        "turns": 8,
+        "wait_count": 17,
+        "avg_wait_ms": 39.66,
+        "max_wait_ms": 83.94
+      },
+      {
+        "pid": 5,
+        "priority": 4,
+        "turns": 4,
+        "wait_count": 9,
+        "avg_wait_ms": 25.56,
+        "max_wait_ms": 42.24
+      },
+      {
+        "pid": 6,
+        "priority": 0,
+        "turns": 5,
+        "wait_count": 11,
+        "avg_wait_ms": 92.91,
+        "max_wait_ms": 228.74
+      },
+      {
+        "pid": 7,
+        "priority": 1,
+        "turns": 6,
+        "wait_count": 13,
+        "avg_wait_ms": 75.48,
+        "max_wait_ms": 184.6
+      },
+      {
+        "pid": 8,
+        "priority": 2,
+        "turns": 7,
+        "wait_count": 15,
+        "avg_wait_ms": 59.45,
+        "max_wait_ms": 143.21
+      },
+      {
+        "pid": 9,
+        "priority": 3,
+        "turns": 8,
+        "wait_count": 17,
+        "avg_wait_ms": 40.79,
+        "max_wait_ms": 102.4
+      },
+      {
+        "pid": 10,
+        "priority": 4,
+        "turns": 4,
+        "wait_count": 9,
+        "avg_wait_ms": 26.26,
+        "max_wait_ms": 47.59
+      }
+    ]
+  },
+  "throughput": {
+    "benchmark": "throughput",
+    "agents": 8,
+    "wall_s": 0.417,
+    "turns_total": 48,
+    "tool_calls_total": 0,
+    "tasks_min": 6906.84,
+    "min_tasks_min": 60.0,
+    "passed": true
+  },
+  "checkpoint_io": {
+    "benchmark": "checkpoint_io",
+    "entries": [
+      {
+        "messages": 20,
+        "artifacts": 5,
+        "checkpoint_ms": 0.96,
+        "bytes": 4152,
+        "mib_s": 4.12
+      },
+      {
+        "messages": 200,
+        "artifacts": 20,
+        "checkpoint_ms": 1.64,
+        "bytes": 33953,
+        "mib_s": 19.7
+      },
+      {
+        "messages": 500,
+        "artifacts": 50,
+        "checkpoint_ms": 2.23,
+        "bytes": 83750,
+        "mib_s": 35.89
+      }
+    ]
+  }
+}

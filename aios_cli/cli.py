@@ -5,6 +5,8 @@ Subcommands:
     aios demo                    run the two example agents + ps-style table
     aios run SPEC [SPEC...]      run agents from spec files (see --agents-module)
     aios resume                  restore the last session's agents (--resume boot path)
+    aios serve [--host --port]   control plane: REST + WebSocket (docs/10-ui.md)
+    aios bench                   Phase 4 benchmarks (fairness/throughput/checkpoint I/O)
 """
 
 from __future__ import annotations
@@ -68,6 +70,39 @@ async def _resume(kernel, agents_module: str | None, timeout: float | None) -> N
     _print_table(summaries)
 
 
+def _serve(host: str, port: int, data_root: str | None, agents_module: str | None) -> int:
+    """Run the control-plane server (FastAPI + uvicorn)."""
+    import uvicorn
+
+    from aios_api import create_app
+
+    _load_agents_module(agents_module)  # fail fast on bad registration
+    kernel = Kernel(data_root=data_root, start=True)
+    app = create_app(kernel, shutdown_on_exit=True)
+    uvicorn.run(app, host=host, port=port, log_level="info")
+    return 0
+
+
+def _bench(data_root: str | None, json_out: bool) -> int:
+    """Run the Phase 4 benchmark suite (benchmarks/run.py)."""
+    import asyncio
+    import json
+
+    from benchmarks.run import render_markdown, run_all, write_report
+
+    report = asyncio.run(run_all(data_root=data_root))
+    _, md_path = write_report(report)
+    print(f"report written: {md_path}")
+    if json_out:
+        print(json.dumps(report, indent=2))
+    else:
+        print(render_markdown(report))
+    ok = report["fairness"]["passed"] and report["throughput"]["passed"]
+    print(f"fairness PASS={report['fairness']['passed']}  "
+          f"throughput PASS={report['throughput']['passed']}")
+    return 0 if ok else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="aios", description="AI OS — multi-agent kernel")
     parser.add_argument("--version", action="store_true", help="print version and exit")
@@ -86,11 +121,25 @@ def main(argv: list[str] | None = None) -> int:
     resume = sub.add_parser("resume", parents=[common], help="resume the last session (--resume boot path)")
     resume.add_argument("--agents-module", default=None, help="module that registers @agent definitions")
 
+    serve = sub.add_parser("serve", parents=[common], help="run the control plane (REST + WebSocket, docs/10-ui.md)")
+    serve.add_argument("--host", default="127.0.0.1", help="bind address (default: 127.0.0.1)")
+    serve.add_argument("--port", type=int, default=8000, help="bind port (default: 8000)")
+    serve.add_argument("--agents-module", default=None, help="module that registers @agent definitions")
+
+    bench = sub.add_parser("bench", parents=[common], help="Phase 4 benchmarks (fairness, throughput, checkpoint I/O)")
+    bench.add_argument("--json", action="store_true", help="print the JSON report")
+
     args = parser.parse_args(argv)
 
     if args.version or not args.command:
         print(f"aios {__version__}")
         return 0
+
+    if args.command == "serve":
+        return _serve(args.host, args.port, args.data_root, args.agents_module)
+
+    if args.command == "bench":
+        return _bench(args.data_root, args.json)
 
     async def _main():
         kernel = Kernel(data_root=args.data_root)

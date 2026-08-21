@@ -1,0 +1,483 @@
+/* aios web desktop — dark operator-console theme. */
+:root {
+  --bg: #0d1117;
+  --bg-panel: #161b22;
+  --bg-inset: #0b0f14;
+  --border: #2d333b;
+  --fg: #e6edf3;
+  --muted: #8b949e;
+  --accent: #2f81f7;
+  --accent-2: #a371f7;
+  --ok: #3fb950;
+  --warn: #d29922;
+  --bad: #f85149;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+code,
+.mono {
+  font-family: var(--mono);
+}
+
+/* ------------------------------------------------------------ layout */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.main {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.panel-head .spacer {
+  flex: 1;
+}
+
+.panel-body {
+  padding: 12px;
+  overflow: auto;
+  min-height: 0;
+}
+
+/* ------------------------------------------------------------ topbar */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 16px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar .brand {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.topbar nav {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+}
+
+.topbar nav button {
+  background: none;
+  border: none;
+  color: var(--muted);
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.topbar nav button:hover {
+  color: var(--fg);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.topbar nav button.active {
+  color: var(--fg);
+  background: rgba(47, 129, 247, 0.15);
+  box-shadow: inset 0 0 0 1px rgba(47, 129, 247, 0.4);
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+}
+
+.feed-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warn);
+}
+
+.feed-dot.live {
+  background: var(--ok);
+}
+
+.feed-dot.reconnecting {
+  background: var(--warn);
+}
+
+/* ------------------------------------------------------------ buttons */
+button {
+  font: inherit;
+  color: var(--fg);
+  background: #21262d;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: #30363d;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+button.ghost {
+  background: none;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+button.danger {
+  background: #6e1f1a;
+  border-color: #a04034;
+}
+
+button.small {
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+/* ------------------------------------------------------------ tables */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+th {
+  color: var(--muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+}
+
+tbody tr:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+td.num,
+th.num {
+  text-align: right;
+  font-family: var(--mono);
+}
+
+/* ------------------------------------------------------------ badges */
+.badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.badge.running {
+  color: var(--ok);
+  border-color: rgba(63, 185, 80, 0.5);
+}
+
+.badge.ready {
+  color: var(--accent);
+  border-color: rgba(47, 129, 247, 0.5);
+}
+
+.badge.blocked {
+  color: var(--accent-2);
+  border-color: rgba(163, 113, 247, 0.5);
+}
+
+.badge.suspended {
+  color: var(--warn);
+  border-color: rgba(210, 153, 34, 0.5);
+}
+
+.badge.terminated {
+  color: var(--muted);
+}
+
+.badge.spawned {
+  color: var(--fg);
+}
+
+.badge.healthy {
+  color: var(--ok);
+  border-color: rgba(63, 185, 80, 0.5);
+}
+
+.badge.degraded {
+  color: var(--warn);
+  border-color: rgba(210, 153, 34, 0.5);
+}
+
+.badge.down {
+  color: var(--bad);
+  border-color: rgba(248, 81, 73, 0.5);
+}
+
+/* ------------------------------------------------------------ forms */
+input,
+textarea,
+select {
+  font: inherit;
+  background: var(--bg-inset);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+textarea {
+  font-family: var(--mono);
+  font-size: 12px;
+  resize: vertical;
+}
+
+.form-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+/* ------------------------------------------------------------ login */
+.login-wrap {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.login {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 28px;
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.login h1 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.login input {
+  width: 100%;
+}
+
+.login .error {
+  color: var(--bad);
+  margin: 0;
+}
+
+.login .hint {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 0;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.error-text {
+  color: var(--bad);
+}
+
+.ok-text {
+  color: var(--ok);
+}
+
+/* ------------------------------------------------------------ metrics */
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.metric {
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.metric .label {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.metric .value {
+  font-size: 20px;
+  font-weight: 700;
+  font-family: var(--mono);
+  margin-top: 2px;
+}
+
+.bar {
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  height: 10px;
+  overflow: hidden;
+}
+
+.bar > div {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  transition: width 0.4s ease;
+}
+
+/* ------------------------------------------------------------ console */
+.console-drawer {
+  height: 280px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-panel);
+  display: flex;
+  flex-direction: column;
+}
+
+.console-lines {
+  flex: 1;
+  overflow: auto;
+  background: var(--bg-inset);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 8px 12px;
+  margin: 8px;
+  border-radius: 6px;
+}
+
+.console-lines .line {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.console-input {
+  display: flex;
+  gap: 8px;
+  padding: 0 12px 10px;
+}
+
+.console-input input {
+  flex: 1;
+}
+
+/* ------------------------------------------------------------ misc */
+.flash {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 50;
+  background: var(--bg-panel);
+  border: 1px solid var(--accent);
+  color: var(--fg);
+  padding: 8px 14px;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 40;
+}
+
+.modal {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  width: min(680px, 90vw);
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal .panel-body {
+  overflow: auto;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid var(--border);
+}

@@ -81,7 +81,26 @@
         "model": { "type": "string", "default": "mock" },
         "system": { "type": "string" },
         "temperature": { "type": "number", "minimum": 0, "maximum": 2, "default": 0.0 },
-        "max_tokens": { "type": "integer", "minimum": 1 }
+        "max_tokens": { "type": "integer", "minimum": 1 },
+        "provider": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Primary provider name (overrides model-string routing)."
+        },
+        "failover": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true,
+          "description": "Ordered fallback models/providers tried when the primary fails."
+        },
+        "max_retries": {
+          "type": "integer", "minimum": 0, "maximum": 10, "default": 1,
+          "description": "Retries per provider before failover; exponential backoff."
+        },
+        "backoff_s": {
+          "type": "number", "minimum": 0, "maximum": 60, "default": 0.25,
+          "description": "Base backoff seconds between retries (doubles each attempt)."
+        }
       }
     },
     "budgets": {

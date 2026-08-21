@@ -28,13 +28,14 @@ import uuid
 from dataclasses import dataclass
 
 from ..acb import AgentState
-from ..errors import AiosError, E_INVAL, E_NOENT, E_PERM
+from ..errors import AiosError, E_INVAL, E_NOENT, E_PERM, E_STATE
 from ..specs import validate_spec
-from ..syscalls.registry import register
+from ..syscalls.registry import args_hash, register
 
 DEFAULT_MAX_QUEUE_DEPTH = 100
 DEFAULT_TTL_S = 3600.0
 SEND_TYPES = {"direct", "reply", "handoff"}
+OPERATOR_PID = 0  # human-in-the-loop: the operator is IPC peer PID 0
 
 
 def _new_id(prefix: str) -> str:
@@ -224,6 +225,52 @@ class IPCManager:
                     return m
         return None
 
+    # -------------------------------------------------------- operator channel
+    def send_from_operator(
+        self,
+        target_pid: int,
+        body: dict,
+        *,
+        type: str = "direct",
+        reply_to: str | None = None,
+        topic: str | None = None,
+        priority: int = 50,
+        ttl_s: float | None = None,
+    ) -> IpcMessage:
+        """Human-in-the-loop (docs/06-ipc.md §9.4): a human operator — PID 0 —
+        sends a message to an agent, e.g. from the REST API or the web desktop.
+
+        Unlike ``send`` there is no sender spec to consult, so agent send
+        permissions do not apply; the target must still exist (E_NOENT) and the
+        type must be a declared send type. Bodies are never audited verbatim —
+        only a canonical hash is recorded (docs/06-ipc.md §8).
+        """
+        target = self.kernel.agent_manager.peek(target_pid)
+        if target is None:
+            raise AiosError(E_NOENT, f"no such agent: {target_pid}")
+        if type not in SEND_TYPES:
+            raise AiosError(E_INVAL, f"send_msg type must be one of {sorted(SEND_TYPES)}")
+        msg = IpcMessage(
+            msg_id=_new_id("op"),
+            type=type,
+            from_pid=OPERATOR_PID,
+            to_pid=target_pid,
+            body=copy.deepcopy(body),
+            reply_to=reply_to,
+            topic=topic,
+            priority=int(priority),
+            expires_at=(time.time() + ttl_s) if ttl_s else None,
+        )
+        self.enqueue(target_pid, msg)
+        self.kernel.audit.record(
+            "ipc.operator_send",
+            to_pid=target_pid,
+            msg_id=msg.msg_id,
+            type=msg.type,
+            body_hash=args_hash({"body": body}),
+        )
+        return msg
+
     # ------------------------------------------------------------------ recv
     async def recv(
         self, pid: int, *, timeout_ms: float, filter_: dict | None = None
@@ -243,9 +290,15 @@ class IPCManager:
                 )
                 return {"msg": msg.to_dict()}
             acb = self.kernel.agent_manager.peek(pid)
-            if acb is None or acb.state not in (AgentState.READY, AgentState.RUNNING):
-                # suspended / terminated while waiting — unwind without blocking
-                return {"msg": None, "reason": "state"}
+            if acb is None:
+                raise AiosError(E_NOENT, f"no such agent: {pid}")
+            if acb.state not in (AgentState.READY, AgentState.RUNNING):
+                # suspended / terminated while parked: unwind the syscall with a
+                # hard E_STATE so the turn function cannot mistake it for a
+                # timeout and spin a tight retry loop (starving the event loop).
+                raise AiosError(
+                    E_STATE, f"agent {pid} is {acb.state.value} (blocked syscall unwound)"
+                )
             if timeout_ms <= 0 or time.time() >= deadline:
                 return {"msg": None, "reason": "timeout"}
             event = self.kernel.scheduler.block(pid)
@@ -368,6 +421,16 @@ class IPCManager:
         self.kernel.scheduler.block(pid)
         try:
             while pending:
+                acb = self.kernel.agent_manager.peek(pid)
+                if acb is None:
+                    raise AiosError(E_NOENT, f"no such agent: {pid}")
+                if acb.state in (AgentState.SUSPENDED, AgentState.TERMINATED):
+                    # suspended / killed while parked: unwind promptly instead
+                    # of polling for the remaining deadline.
+                    raise AiosError(
+                        E_STATE,
+                        f"agent {pid} is {acb.state.value} (join unwound by state change)",
+                    )
                 if deadline is not None and time.time() >= deadline:
                     break
                 remaining = None if deadline is None else deadline - time.time()
@@ -382,6 +445,13 @@ class IPCManager:
         finally:
             self.kernel.scheduler.unblock(pid)
         await self.kernel.scheduler.wait_for_grant(pid)
+        acb = self.kernel.agent_manager.peek(pid)
+        if acb is None:
+            raise AiosError(E_NOENT, f"no such agent: {pid}")
+        if acb.state not in (AgentState.READY, AgentState.RUNNING):
+            raise AiosError(
+                E_STATE, f"agent {pid} is {acb.state.value} (join unwound by state change)"
+            )
         return {"results": self._join_results(pids), "timed_out": bool(pending)}
 
     def _pending(self, pids: list[int]) -> list[int]:

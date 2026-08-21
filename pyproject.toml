@@ -5,13 +5,17 @@ build-backend = "hatchling.build"
 [project]
 name = "aios"
 version = "0.1.0"
-description = "AI OS — LLM as OS, agents as apps. Phase 1 MVP kernel."
+description = "AI OS — LLM as OS, agents as apps. Phase 4: REST/WS control plane + web desktop + provider failover + benchmarks."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 dependencies = [
   "jsonschema>=4.20",
   "httpx>=0.27",
+  "fastapi>=0.115",
+  "uvicorn>=0.30",
+  "websockets>=12.0",
+  "PyJWT>=2.9",
 ]
 
 [project.optional-dependencies]
@@ -24,8 +28,11 @@ dev = [
 aios = "aios_cli.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["aios_kernel", "aios_sdk", "aios_cli", "aios"]
+packages = ["aios_kernel", "aios_sdk", "aios_cli", "aios", "aios_api", "benchmarks"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+  "benchmark: performance/regression benchmarks (run with `pytest -m benchmark`)",
+]

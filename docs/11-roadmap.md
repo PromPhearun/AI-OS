@@ -150,11 +150,23 @@ records. Every `08-security.md` §12 acceptance item is green
 - Benchmark harness modeled on AIOS methodology: throughput (tasks/min), fairness
   (max/avg waiting time), preemption overhead, checkpoint I/O cost.
 
+**Progress — Phase 4 (done):** the REST/WS control plane (`aios_api/`) with
+JWT/API-key auth, rate limiting, security headers, and a kernel-audited request
+log; the React/TS web desktop (`web/`) served same-origin by `aios serve` at
+`http://127.0.0.1:8000/` (processes, scheduler, audit + tamper verify,
+approvals, semantic fs search, LLM health, attach console — live over
+`/v1/ws/feed` and `/v1/agents/{pid}/ws/console`); LLM provider failover in
+`llm_core.py` (ordered `failover` chain, per-attempt `max_retries`, per-provider
+health via `provider_status()` → `GET /v1/llm`, strict-mode rejection of
+unconfigured providers); and the benchmark harness (`benchmarks/`, `aios bench`)
+covering fairness (10 heterogeneous agents — bounded starvation), throughput
+(tasks/min), and checkpoint I/O — reports land in `benchmarks/reports/`.
+
 **Key acceptance tests**
-- `attach` chat round-trips through IPC.
+- `attach` chat round-trips through IPC. *(web desktop console + `/messages`)*
 - Approval ticket approved from the web UI and honored by a blocked agent.
 - Fairness benchmark: 10 heterogeneous agents — max starvation < threshold; CPU-like utilization
-  metrics reported.
+  metrics reported. *(`tests/integration/test_benchmarks.py`, `-m benchmark`)*
 
 ## 7. Phase 5 — Hardening (detail)
 

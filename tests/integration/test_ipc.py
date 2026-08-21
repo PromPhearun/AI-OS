@@ -206,3 +206,52 @@ async def test_valid_handoff_delivered(kernel: Kernel, session) -> None:
     from aios_kernel.specs import validate_spec
 
     validate_spec(res["msg"]["body"]["spec"])
+
+
+# ------------------------------------------------------------ state unwinds
+@pytest.mark.asyncio
+async def test_suspend_wakes_blocked_recv_with_state_error(kernel: Kernel, session) -> None:
+    """Suspend of an agent parked in recv_msg must unwind with E_STATE.
+
+    Regression: the blocked syscall used to return a benign
+    ``{"msg": None, "reason": "state"}`` that turn loops retried in a tight
+    CPU spin, starving the event loop (the API suspend request hung). The
+    syscall must now surface a hard E_STATE the runner treats as "unwound".
+    """
+    b = await session(_ipc_spec(name="b-suspend"))
+    await _grant(kernel, b.pid)
+
+    recv_task = asyncio.create_task(b.recv_msg(30000))
+    await asyncio.sleep(0.05)
+    assert kernel.agent_manager.get(b.pid).state.value == "blocked"
+
+    # Must complete promptly — it used to hang the whole event loop.
+    await asyncio.wait_for(kernel.scheduler.suspend(b.pid, reason="regression"), timeout=2)
+
+    from aios_sdk.errors import AiosStateError
+
+    with pytest.raises(AiosStateError):
+        await asyncio.wait_for(recv_task, timeout=2)
+
+
+@pytest.mark.asyncio
+async def test_suspend_wakes_blocked_join_with_state_error(kernel: Kernel, session) -> None:
+    """Suspend of an agent parked in join must unwind promptly with E_STATE.
+
+    Regression: join kept polling for the full deadline after a suspend
+    instead of unwinding right away.
+    """
+    parent = await session(_ipc_spec(name="parent-suspend"))
+    child_pid = await parent.spawn(_ipc_spec(name="child-suspend"))
+    await _grant(kernel, parent.pid)
+
+    join_task = asyncio.create_task(parent.join([child_pid], timeout_ms=30000))
+    await asyncio.sleep(0.05)
+    assert kernel.agent_manager.get(parent.pid).state.value == "blocked"
+
+    await asyncio.wait_for(kernel.scheduler.suspend(parent.pid, reason="regression"), timeout=2)
+
+    from aios_sdk.errors import AiosStateError
+
+    with pytest.raises(AiosStateError):
+        await asyncio.wait_for(join_task, timeout=2)

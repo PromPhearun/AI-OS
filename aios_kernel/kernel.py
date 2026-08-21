@@ -46,6 +46,7 @@ class Kernel:
         self,
         *,
         llm_backend=None,
+        llm_backends: dict[str, object] | None = None,
         audit_path: str | None = None,
         workspace_root: str | None = None,
         data_root: str | None = None,
@@ -54,7 +55,12 @@ class Kernel:
     ):
         """data_root points audit/workspaces/checkpoints/session at one directory
         (default layout is ``aios-data``); an explicit audit_path or
-        workspace_root wins over the data_root-derived default."""
+        workspace_root wins over the data_root-derived default.
+
+        ``llm_backends`` registers a provider map for failover (Phase 4): a
+        dict keyed by provider name; ``llm_backend`` (single backend) is still
+        accepted and registered under its own provider name.
+        """
         self.data_root = Path(data_root) if data_root else None
         self.audit = AuditLog(
             self, path=audit_path or (str(self.data_root / "audit.jsonl") if self.data_root else None)
@@ -76,7 +82,7 @@ class Kernel:
             root=(str(self.data_root / "credentials.json") if self.data_root else None),
         )
         self.access = AccessManager(self)
-        self.llm = LLMCore(self, backend=llm_backend)
+        self.llm = LLMCore(self, backend=llm_backend, backends=llm_backends)
         self.tools = ToolManager(self)
         self.mcp = MCPRegistry(self)
         self.fs = SemanticFS(self)
@@ -112,5 +118,10 @@ class Kernel:
         self.agent_manager.shutdown_all(reason="kernel shutdown")
         await asyncio.sleep(0)  # let cancelled tasks unwind
         self.audit.close()
-        if hasattr(self.llm.backend, "aclose"):
-            await self.llm.backend.aclose()
+        for backend in self.llm.providers:
+            b = self.llm.get_backend(backend)
+            if b is not None and hasattr(b, "aclose"):
+                try:
+                    await b.aclose()
+                except Exception:
+                    pass

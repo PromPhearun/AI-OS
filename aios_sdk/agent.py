@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from aios_kernel.acb import AgentState
 from aios_kernel.errors import AiosError, E_INVAL
 
+from .errors import AiosSyscallError
 from .session import AgentSession
 from .syscalls import reset_current_session, set_current_session
 
@@ -59,6 +60,18 @@ class AgentRunner:
             token = set_current_session(session)
             try:
                 done = await self.turn_fn(session)
+            except AiosSyscallError:
+                # A blocking syscall (recv_msg / join) unwound because the agent
+                # was suspended or killed mid-flight. Exit quietly: a later
+                # resume re-attaches a fresh runner task. Any other syscall
+                # error is a genuine agent bug — re-raise it.
+                acb = self.kernel.agent_manager.peek(self.pid)
+                if acb is None or acb.state in (
+                    AgentState.SUSPENDED,
+                    AgentState.TERMINATED,
+                ):
+                    return
+                raise
             finally:
                 reset_current_session(token)
             if done:

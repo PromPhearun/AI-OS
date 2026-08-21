@@ -36,6 +36,41 @@ class Scheduler:
         self._next_seq = 0
         self._running: int | None = None
         self._blocked_events: dict[int, asyncio.Event] = {}
+        # Phase 4 observability (docs/10-ui.md §4 /v1/scheduler + benchmarks):
+        self._epoch_start = time.monotonic()
+        self._wait_since: dict[int, float] = {}  # pid -> monotonic when queueing
+        self._wait_history: dict[int, list[float]] = {}  # pid -> last waited_ms
+        self._dispatch_count = 0
+        self._preempt_count = 0
+        self._running_since: float | None = None
+
+    def _record_wait(self, pid: int) -> None:
+        """Register the start of a queued wait for ``pid`` (idempotent)."""
+        self._wait_since.setdefault(pid, time.monotonic())
+
+    def _end_wait(self, pid: int) -> float:
+        """Close the wait interval; returns waited milliseconds (0 if untracked)."""
+        started = self._wait_since.pop(pid, None)
+        if started is None:
+            return 0.0
+        waited_ms = (time.monotonic() - started) * 1000.0
+        hist = self._wait_history.setdefault(pid, [])
+        hist.append(waited_ms)
+        if len(hist) > 100:  # bounded per-agent history
+            del hist[:-100]
+        return waited_ms
+
+    def _wait_stats(self, pid: int) -> dict:
+        hist = self._wait_history.get(pid, [])
+        current = self._wait_since.get(pid)
+        waited_ms = (time.monotonic() - current) * 1000.0 if current else 0.0
+        return {
+            "waited_ms": round(hist[-1] if hist else waited_ms, 2),
+            "current_wait_ms": round(waited_ms, 2),
+            "avg_wait_ms": round(sum(hist) / len(hist), 2) if hist else 0.0,
+            "max_wait_ms": round(max(hist), 2) if hist else 0.0,
+            "wait_count": len(hist),
+        }
 
     # ------------------------------------------------------------- queue mgmt
     def add_ready(self, pid: int) -> None:
@@ -50,6 +85,8 @@ class Scheduler:
             self._seq.pop(pid, None)
         if self._running == pid:
             self._running = None
+            self._running_since = None
+            self._preempt_count += 1  # RUNNING agent evicted (suspend/kill path)
         self._blocked_events.pop(pid, None)
 
     def is_running(self, pid: int) -> bool:
@@ -111,6 +148,7 @@ class Scheduler:
     async def wait_for_grant(self, pid: int) -> None:
         """Agent loop: block until this agent is granted the CPU (RUNNING)."""
         acb = self.kernel.agent_manager.get(pid)
+        self._record_wait(pid)
         while True:
             if acb.state is not AgentState.READY or pid not in self._ready:
                 return  # suspended / terminated / killed while waiting
@@ -120,6 +158,9 @@ class Scheduler:
                 self._running = pid
                 acb.wait_turns = 0
                 acb.run_since = time.monotonic()
+                self._dispatch_count += 1
+                self._end_wait(pid)
+                self._running_since = acb.run_since
                 transition(acb, AgentState.RUNNING, "grant")
                 return
             acb.wait_turns += 1
@@ -240,6 +281,82 @@ class Scheduler:
             "agent.suspend", pid=pid, reason=reason, checkpoint=ckpt_id
         )
         return {"checkpoint_id": ckpt_id}
+
+    # --------------------------------------------------------- observability
+    def snapshot(self) -> dict:
+        """A point-in-time view of the scheduler (docs/10-ui.md §4 /v1/scheduler).
+
+        Powers the web desktop's Scheduler tab and the Phase 4 fairness /
+        throughput benchmarks: queue depths, per-agent wait statistics,
+        utilization, and dispatch/preemption counters.
+        """
+        now = time.monotonic()
+        wall = max(now - self._epoch_start, 1e-9)
+
+        agents: dict[int, dict] = {}
+        run_seconds = 0.0
+        for acb in self.kernel.agent_manager._table.values():
+            if acb.state is AgentState.TERMINATED:
+                continue
+            ws = self._wait_stats(acb.pid)
+            agents[acb.pid] = {
+                "name": acb.spec.get("name", "?"),
+                "state": acb.state.value,
+                "priority": acb.priority,
+                "effective_priority": self._effective(acb),
+                "waited_ms": ws["waited_ms"],
+                "current_wait_ms": ws["current_wait_ms"],
+                "avg_wait_ms": ws["avg_wait_ms"],
+                "max_wait_ms": ws["max_wait_ms"],
+                "wait_count": ws["wait_count"],
+                "run_time_s": round(acb.usage.run_time_s, 3),
+            }
+            if acb.run_since is not None and acb.state is AgentState.RUNNING:
+                run_seconds += acb.usage.run_time_s + (now - acb.run_since)
+            else:
+                run_seconds += acb.usage.run_time_s
+
+        ready_rows = []
+        for pid in self._ready:
+            acb = self.kernel.agent_manager.get(pid)
+            ws = self._wait_stats(pid)
+            ready_rows.append(
+                {
+                    "pid": pid,
+                    "name": acb.spec.get("name", "?"),
+                    "priority": acb.priority,
+                    "effective_priority": self._effective(acb),
+                    "waited_ms": ws["waited_ms"],
+                    "current_wait_ms": ws["current_wait_ms"],
+                }
+            )
+
+        all_wait: list[float] = []
+        for hist in self._wait_history.values():
+            all_wait.extend(hist)
+
+        return {
+            "running": self._running,
+            "ready": ready_rows,
+            "blocked": list(self._blocked_events),
+            "queues": {
+                "ready_depth": len(self._ready),
+                "blocked_depth": len(self._blocked_events),
+                "total_live": len(agents),
+            },
+            "utilization": {
+                "run_time_s": round(run_seconds, 3),
+                "wall_s": round(wall, 3),
+                "percent": round((run_seconds / wall) * 100.0, 2),
+            },
+            "stats": {
+                "dispatches": self._dispatch_count,
+                "preemptions": self._preempt_count,
+                "avg_wait_ms": round(sum(all_wait) / len(all_wait), 2) if all_wait else 0.0,
+                "max_wait_ms": round(max(all_wait), 2) if all_wait else 0.0,
+            },
+            "agents": agents,
+        }
 
 
 # ------------------------------------------------------------------ syscalls
