@@ -28,6 +28,7 @@ from .modules.access import AccessManager
 from .modules.agent_manager import AgentManager
 from .modules.audit import AuditLog
 from .modules.context import ContextManager
+from .modules.crypto import cipher_for
 from .modules.fs import SemanticFS
 from .modules.ipc import IPCManager
 from .modules.llm_core import LLMCore
@@ -62,6 +63,9 @@ class Kernel:
         accepted and registered under its own provider name.
         """
         self.data_root = Path(data_root) if data_root else None
+        # At-rest cipher: AES-256-GCM for credentials.json + checkpoint
+        # snapshots (AIOS_MASTER_KEY / AIOS_ENCRYPT=1, see modules/crypto.py).
+        self.crypto = cipher_for(self.data_root)
         self.audit = AuditLog(
             self, path=audit_path or (str(self.data_root / "audit.jsonl") if self.data_root else None)
         )
@@ -76,10 +80,12 @@ class Kernel:
             self,
             root=(str(self.data_root / "checkpoints") if self.data_root else None),
             session_path=(str(self.data_root / "session.json") if self.data_root else None),
+            cipher=self.crypto,
         )
         self.vault = Vault(
             self,
             root=(str(self.data_root / "credentials.json") if self.data_root else None),
+            cipher=self.crypto,
         )
         self.access = AccessManager(self)
         self.llm = LLMCore(self, backend=llm_backend, backends=llm_backends)

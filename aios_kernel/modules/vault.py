@@ -11,8 +11,9 @@ Hard rules enforced here and in Access Control:
   * values never enter audit logs, checkpoints, or context (hashed only);
   * ``credentials.json`` is readable only by the kernel process owner.
 
-At-rest encryption is deferred to Phase 5 (docs/08-security.md §8 documents
-the v1 threat model).
+Phase 5: ``credentials.json`` is sealed with AES-256-GCM at rest when the
+kernel has a master key (``AIOS_MASTER_KEY`` or ``AIOS_ENCRYPT=1`` — see
+``modules/crypto.py``); a wrong key or tampered file fails closed (empty vault).
 """
 
 from __future__ import annotations
@@ -29,21 +30,32 @@ REDACTED_MARKER = "[REDACTED]"
 
 
 class Vault:
-    def __init__(self, kernel, root: str | None = None):
+    def __init__(self, kernel, root: str | None = None, *, cipher=None):
         self.kernel = kernel
         self._env: dict[str, str] = {}
         self._path = os.environ.get("AIOS_CREDENTIALS_PATH") or root
+        self._cipher = cipher  # AES-256-GCM at-rest cipher or None (plaintext)
         if self._path:
             self._load()
 
     # ---------------------------------------------------------------- store
     def _load(self) -> None:
         try:
-            with open(self._path, encoding="utf-8") as fh:
-                data = json.load(fh)
+            raw = Path(self._path).read_bytes()
         except FileNotFoundError:
             return
-        except (OSError, ValueError):
+        except OSError:
+            self._env = {}  # unreadable vault: fail closed, never crash mid-boot
+            return
+        if self._cipher is not None:
+            try:
+                raw = self._cipher.open(raw)
+            except Exception:
+                self._env = {}  # wrong key / tampered file: fail closed (no secrets)
+                return
+        try:
+            data = json.loads(raw.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
             self._env = {}  # corrupt vault: fail closed, never crash mid-boot
             return
         if isinstance(data, dict):
@@ -54,10 +66,13 @@ class Vault:
             return
         path = Path(self._path)
         path.parent.mkdir(parents=True, exist_ok=True)
+        payload = json.dumps(self._env, sort_keys=True, indent=2).encode("utf-8")
+        if self._cipher is not None:
+            payload = self._cipher.seal(payload)
         fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".credentials-", suffix=".tmp")
         try:
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                json.dump(self._env, fh, sort_keys=True, indent=2)
+            with os.fdopen(fd, "wb") as fh:
+                fh.write(payload)
                 fh.flush()
                 os.fsync(fh.fileno())
             os.chmod(tmp, 0o600)

@@ -112,11 +112,19 @@ class Checkpoint:
 class StorageManager:
     """Owns checkpoints (durable on disk) and the session resume set."""
 
-    def __init__(self, kernel, *, root: str | None = None, session_path: str | None = None):
+    def __init__(
+        self,
+        kernel,
+        *,
+        root: str | None = None,
+        session_path: str | None = None,
+        cipher=None,
+    ):
         self.kernel = kernel
         self._root = Path(root) if root else Path("aios-data") / "checkpoints"
         self._root.mkdir(parents=True, exist_ok=True)
         self._session_path = Path(session_path) if session_path else self._root.parent / "session.json"
+        self._cipher = cipher  # AES-256-GCM at-rest cipher or None (plaintext)
         self._checkpoints: dict[str, Checkpoint] = {}
         self._seq = 0
 
@@ -158,6 +166,10 @@ class StorageManager:
             "subscriptions": list(ckpt.subscriptions),
         }
         snap_bytes = json.dumps(snapshot, sort_keys=True, default=str).encode("utf-8")
+        if self._cipher is not None:
+            # Seal before hashing: the manifest hash therefore covers the
+            # ciphertext on disk, and GCM additionally authenticates it.
+            snap_bytes = self._cipher.seal(snap_bytes)
         snap_hash = hashlib.sha256(snap_bytes).hexdigest()
         ckpt.hash = snap_hash
         ckpt.committed = True
@@ -223,6 +235,15 @@ class StorageManager:
         expected = manifest.get("hash", "")
         if not expected or actual != expected:
             raise AiosError(E_INTERNAL, f"checkpoint '{checkpoint_id}' failed integrity check")
+        if self._cipher is not None:
+            try:
+                snap_bytes = self._cipher.open(snap_bytes)
+            except Exception as exc:
+                raise AiosError(
+                    E_INTERNAL,
+                    f"checkpoint '{checkpoint_id}' failed decryption "
+                    "(wrong master key or tampered data)",
+                ) from exc
         try:
             snap = json.loads(snap_bytes)
         except json.JSONDecodeError as exc:
