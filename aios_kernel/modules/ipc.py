@@ -127,19 +127,32 @@ def _topic_match(pattern: str, topic: str) -> bool:
 class IPCManager:
     """Owns every mailbox and subscription; enforces IPC permissions."""
 
-    def __init__(self, kernel):
+    def __init__(self, kernel, broker=None):
+        """``broker`` is an optional multi-kernel IPC authority
+        (modules/broker.py — in-process ``Broker`` or socket ``BrokerClient``).
+        When present the manager mirrors claims, subscriptions, and remote
+        routing through it; local semantics are unchanged."""
         self.kernel = kernel
+        self._broker = broker
         self._mailboxes: dict[int, list[IpcMessage]] = {}
         self._subscriptions: dict[int, list[str]] = {}
+        if broker is not None:
+            broker.register_kernel(kernel.kernel_id, self._broker_deliver)
 
     # ------------------------------------------------------------- lifecycle
     def create(self, pid: int) -> None:
         self._mailboxes.setdefault(pid, [])
         self._subscriptions.setdefault(pid, [])
+        if self._broker is not None:
+            acb = self.kernel.agent_manager.peek(pid)
+            group_id = getattr(acb, "group_id", None) or "default"
+            self._broker.claim(pid, kernel_id=self.kernel.kernel_id, group_id=group_id)
 
     def free(self, pid: int) -> None:
         self._mailboxes.pop(pid, None)
         self._subscriptions.pop(pid, None)
+        if self._broker is not None:
+            self._broker.release(pid)
 
     def mailbox(self, pid: int) -> list[IpcMessage]:
         """Read-only copy of a mailbox (tests / inspection)."""
@@ -153,28 +166,84 @@ class IPCManager:
     def _declared(spec: dict, key: str) -> list[str]:
         return list(spec.get("ipc", {}).get(key, []))
 
-    def can_send_to(self, sender_spec: dict, target_pid: int) -> bool:
-        """Deny-by-default send check against the sender's declared grants."""
-        target = self.kernel.agent_manager.peek(target_pid)
-        if target is None:
-            raise AiosError(E_NOENT, f"no such agent: {target_pid}")
+    async def can_send_to(self, sender_spec: dict, target_pid: int) -> bool:
+        """Deny-by-default send check against the sender's declared grants.
+
+        Local targets resolve against the process table; remote targets are
+        resolved through the broker (same grants, group matched remotely).
+        """
         entries = self._declared(sender_spec, "can_send_to")
         if "*" in entries:
-            return True
-        if f"group:{target.group_id}" in entries:
-            return True
-        if f"pid:{target_pid}" in entries:
-            return True
+            # Still require the target to exist somewhere.
+            if self.kernel.agent_manager.peek(target_pid) is not None:
+                return True
+            if self._broker is not None:
+                if await self._broker_resolve(target_pid) is None:
+                    raise AiosError(E_NOENT, f"no such agent: {target_pid}")
+                return True
+            raise AiosError(E_NOENT, f"no such agent: {target_pid}")
+        target = self.kernel.agent_manager.peek(target_pid)
+        if target is not None:
+            if f"group:{target.group_id}" in entries:
+                return True
+            if f"pid:{target_pid}" in entries:
+                return True
+            return False
+        if self._broker is not None:
+            peer = await self._broker_resolve(target_pid)
+            if peer is None:
+                raise AiosError(E_NOENT, f"no such agent: {target_pid}")
+            if f"group:{peer.get('group_id')}" in entries:
+                return True
+            if f"pid:{target_pid}" in entries:
+                return True
+        else:
+            raise AiosError(E_NOENT, f"no such agent: {target_pid}")
         return False
 
     def _topic_allowed(self, spec: dict, key: str, topic: str) -> bool:
         return any(_topic_match(p, topic) for p in self._declared(spec, key))
 
+    # ------------------------------------------------------ multi-kernel
+    async def _broker_resolve(self, target_pid: int) -> dict | None:
+        """Resolve a pid across kernels via the broker (None if standalone).
+
+        Tolerates both the sync in-process ``Broker`` and the request/response
+        ``BrokerClient``.
+        """
+        if self._broker is None:
+            return None
+        result = self._broker.resolve(target_pid)
+        if asyncio.iscoroutine(result):
+            result = await result
+        return result
+
+    async def allocate_pid(self) -> int | None:
+        """Ask the broker for a globally unique pid (None when standalone)."""
+        if self._broker is None:
+            return None
+        return await self._broker.allocate_pid()
+
+    async def _broker_deliver(self, msg_dict: dict) -> None:
+        """Inbound cross-kernel message: enqueue into the local mailbox.
+
+        The message was already permission-checked at the sender and is
+        re-audited here on arrival (per-kernel deny-by-default is preserved).
+        Fail-closed: if the local pid is gone (e.g. freed before the broker
+        release landed), the message is dropped, never resurrected.
+        """
+        target_pid = msg_dict.get("to_pid")
+        if target_pid is None:
+            return
+        if self.kernel.agent_manager.peek(target_pid) is None:
+            return
+        self.enqueue(target_pid, IpcMessage.from_dict(msg_dict))
+
     # ------------------------------------------------------------------ send
     async def send(self, sender_pid: int, args: dict) -> IpcMessage:
         sender = self.kernel.agent_manager.get(sender_pid)
         target_pid = args["to_pid"]
-        if not self.can_send_to(sender.spec, target_pid):
+        if not await self.can_send_to(sender.spec, target_pid):
             raise AiosError(E_PERM, f"agent {sender_pid} may not send to {target_pid}")
 
         mtype = args.get("type") or "direct"
@@ -208,7 +277,15 @@ class IPCManager:
             created_at=time.time(),
             expires_at=(time.time() + ttl_s) if ttl_s else None,
         )
-        self.enqueue(target_pid, msg)
+        if self.kernel.agent_manager.peek(target_pid) is not None:
+            self.enqueue(target_pid, msg)
+        elif self._broker is not None:
+            peer = await self._broker_resolve(target_pid)
+            if peer is None:
+                raise AiosError(E_NOENT, f"no such agent: {target_pid}")
+            self._broker.route(self.kernel.kernel_id, msg.to_dict())
+        else:
+            raise AiosError(E_NOENT, f"no such agent: {target_pid}")
         self.kernel.audit.record(
             "ipc.send",
             pid=sender_pid,
@@ -226,7 +303,7 @@ class IPCManager:
         return None
 
     # -------------------------------------------------------- operator channel
-    def send_from_operator(
+    async def send_from_operator(
         self,
         target_pid: int,
         body: dict,
@@ -243,11 +320,9 @@ class IPCManager:
         Unlike ``send`` there is no sender spec to consult, so agent send
         permissions do not apply; the target must still exist (E_NOENT) and the
         type must be a declared send type. Bodies are never audited verbatim —
-        only a canonical hash is recorded (docs/06-ipc.md §8).
+        only a canonical hash is recorded (docs/06-ipc.md §8). With a broker
+        attached the target may live on another kernel and is routed there.
         """
-        target = self.kernel.agent_manager.peek(target_pid)
-        if target is None:
-            raise AiosError(E_NOENT, f"no such agent: {target_pid}")
         if type not in SEND_TYPES:
             raise AiosError(E_INVAL, f"send_msg type must be one of {sorted(SEND_TYPES)}")
         msg = IpcMessage(
@@ -261,7 +336,16 @@ class IPCManager:
             priority=int(priority),
             expires_at=(time.time() + ttl_s) if ttl_s else None,
         )
-        self.enqueue(target_pid, msg)
+        target = self.kernel.agent_manager.peek(target_pid)
+        if target is not None:
+            self.enqueue(target_pid, msg)
+        elif self._broker is not None:
+            peer = await self._broker_resolve(target_pid)
+            if peer is None:
+                raise AiosError(E_NOENT, f"no such agent: {target_pid}")
+            self._broker.route(self.kernel.kernel_id, msg.to_dict())
+        else:
+            raise AiosError(E_NOENT, f"no such agent: {target_pid}")
         self.kernel.audit.record(
             "ipc.operator_send",
             to_pid=target_pid,
@@ -375,15 +459,19 @@ class IPCManager:
         subs = self._subscriptions.setdefault(pid, [])
         if topic not in subs:
             subs.append(topic)
+        if self._broker is not None:
+            self._broker.subscribe(pid, self.kernel.kernel_id, topic)
         self.kernel.audit.record("ipc.subscribe", pid=pid, topic=topic)
 
     def unsubscribe(self, pid: int, topic: str) -> None:
         subs = self._subscriptions.setdefault(pid, [])
         if topic in subs:
             subs.remove(topic)
+        if self._broker is not None:
+            self._broker.unsubscribe(pid, self.kernel.kernel_id, topic)
         self.kernel.audit.record("ipc.unsubscribe", pid=pid, topic=topic)
 
-    def publish(self, pid: int, topic: str, payload: dict) -> int:
+    async def publish(self, pid: int, topic: str, payload: dict) -> int:
         acb = self.kernel.agent_manager.get(pid)
         if not self._topic_allowed(acb.spec, "can_publish", topic):
             raise AiosError(E_PERM, f"agent {pid} may not publish to '{topic}'")
@@ -400,6 +488,14 @@ class IPCManager:
                 )
                 self.enqueue(sub_pid, msg)
                 delivered += 1
+        if self._broker is not None:
+            # fan out to other kernels' subscribers; the broker skips our own
+            delivered += await self._broker.publish(
+                kernel_id=self.kernel.kernel_id,
+                from_pid=pid,
+                topic=topic,
+                payload=payload,
+            )
         self.kernel.audit.record(
             "ipc.publish", pid=pid, topic=topic, delivered=delivered
         )
@@ -411,6 +507,10 @@ class IPCManager:
     ) -> dict:
         """Wait until every listed agent is TERMINATED (or the deadline)."""
         for t in pids:
+            if self.kernel.agent_manager.peek(t) is not None:
+                continue
+            if self._broker is not None and await self._broker_resolve(t) is not None:
+                raise AiosError(E_INVAL, f"cross-kernel join not supported: {t}")
             self.kernel.agent_manager.get(t)  # E_NOENT for unknown targets
         deadline = (time.time() + timeout_ms / 1000.0) if timeout_ms is not None else None
 
@@ -523,7 +623,7 @@ async def _unsubscribe(kernel, pid: int, args: dict) -> dict:
 
 @register("publish")
 async def _publish(kernel, pid: int, args: dict) -> dict:
-    return {"delivered": kernel.ipc.publish(pid, args["topic"], args["payload"])}
+    return {"delivered": await kernel.ipc.publish(pid, args["topic"], args["payload"])}
 
 
 @register("join")

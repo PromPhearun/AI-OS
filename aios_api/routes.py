@@ -187,7 +187,7 @@ async def operator_message(
     principal: Principal = Depends(require_auth),
 ):
     """Human-in-the-loop: operator -> agent over IPC (docs/06-ipc.md §9.4)."""
-    msg = kernel.ipc.send_from_operator(
+    msg = await kernel.ipc.send_from_operator(
         pid, req.body, type=req.type, priority=req.priority, ttl_s=req.ttl_s
     )
     return {"msg_id": msg.msg_id, "delivered": True, "to_pid": pid}

@@ -54,6 +54,13 @@ from ..errors import (
 )
 from ..syscalls.registry import args_hash, register
 from .mcp import MCP_MAX_TOOLS_PER_SERVER, harden_mcp_schema
+from .sandbox import (
+    DEFAULT_SANDBOX_IMAGE,
+    build_container_command,
+    docker_cli_env,
+    has_metacharacters,
+    DockerProbe,
+)
 
 SHELL_ALLOWLIST = {"ls", "cat", "head", "tail", "wc", "grep", "find", "pwd", "echo", "date", "sleep", "true", "false"}
 DEFAULT_TOOL_TIMEOUT_S = 30.0
@@ -121,6 +128,9 @@ class ToolManager:
         self._cancel_events: dict[str, asyncio.Event] = {}
         self._rate: dict[tuple[str, int], deque] = {}  # (tool, pid) -> call stamps
         self._rate_global: dict[str, deque] = {}       # tool -> call stamps
+        # Container profile (Phase 5 Slice 5.2): fail-closed daemon probe + image.
+        self._docker_probe = DockerProbe()
+        self._sandbox_image = os.environ.get("AIOS_SANDBOX_IMAGE") or DEFAULT_SANDBOX_IMAGE
         self._register_builtins()
 
     # ------------------------------------------------------------- registry
@@ -437,22 +447,96 @@ class ToolManager:
             raise AiosError(E_INVAL, "empty command")
         if parts[0] not in SHELL_ALLOWLIST:
             raise AiosError(E_INVAL, f"binary '{parts[0]}' is not allowlisted")
-        if any(part in cmd for part in ("|", ";", "&&", "||", ">", "<", "`", "$(")):
+        if has_metacharacters(cmd):
             raise AiosError(E_INVAL, "shell metacharacters are not allowed")
         tool = self.get("shell.run")
         timeout = float(args.get("timeout_s") or tool.timeout_s or DEFAULT_TOOL_TIMEOUT_S)
+        # docs/08-security.md §4: a spec-declared container profile executes the
+        # allowlisted argv inside a throwaway Docker sandbox instead of a bare
+        # subprocess. Any daemon failure fails closed (E_BUSY).
+        acb = kernel.agent_manager.get(pid)
+        sb = acb.spec.get("sandbox") or {}
+        if sb.get("profile") == "container":
+            return await self._shell_run_container(
+                kernel, pid, parts, timeout, sb, cancel_event=cancel_event
+            )
         env = kernel.tools.sandbox_env(pid)
         cwd = str(kernel.workspaces.path_for(pid))
+        return await self._run_process(
+            parts, env=env, cwd=cwd, timeout=timeout,
+            cancel_event=cancel_event, label=parts[0],
+        )
+
+    async def _shell_run_container(
+        self, kernel, pid: int, parts: list[str], timeout: float, sb: dict,
+        *, cancel_event=None,
+    ) -> dict:
+        """Run an allowlisted argv as ``docker run`` (fail-closed sandbox)."""
+        if not await self._docker_probe.available():
+            raise AiosError(
+                E_BUSY,
+                "container sandbox unavailable: docker daemon is not reachable — failing closed",
+            )
+        network = sb.get("network", "none")
+        if network not in ("none", "http", "all"):
+            raise AiosError(
+                E_INVAL,
+                f"sandbox.network must be 'none', 'http', or 'all', got {network!r}",
+            )
+        proxy = None
+        if network == "http":
+            proxy = os.environ.get("AIOS_EGRESS_PROXY")
+            if not proxy:
+                raise AiosError(
+                    E_PERM,
+                    "sandbox.network='http' requires AIOS_EGRESS_PROXY "
+                    "(an egress allowlist needs a filtering CONNECT proxy) — failing closed",
+                )
+        env = self.sandbox_env(pid)
+        env["AIOS_WORKSPACE"] = "/ws"  # container path, never the host path
+        try:
+            docker_argv = build_container_command(
+                workspace=str(kernel.workspaces.path_for(pid)),
+                argv=parts,
+                network=network,
+                rlimits=dict(sb.get("rlimits") or {}),
+                image=self._sandbox_image,
+                proxy=proxy,
+                env=env,
+                call_id=f"{pid}-{uuid.uuid4().hex[:8]}",
+            )
+        except ValueError as exc:
+            raise AiosError(E_INVAL, f"invalid container sandbox profile: {exc}") from None
+        result = await self._run_process(
+            docker_argv,
+            env=docker_cli_env(),
+            cwd=str(kernel.workspaces.path_for(pid)),
+            timeout=timeout,
+            cancel_event=cancel_event,
+            label="docker",
+        )
+        if result["code"] == 125:
+            raise AiosError(
+                E_TOOL,
+                f"docker failed: {result['stderr'].strip() or 'daemon error'}",
+            )
+        return result
+
+    async def _run_process(
+        self, argv: list[str], *, env: dict | None, cwd: str, timeout: float,
+        cancel_event=None, label: str,
+    ) -> dict:
+        """Spawn ``argv``, stream to completion, honor timeout/cancellation."""
         try:
             proc = await asyncio.create_subprocess_exec(
-                *parts,
+                *argv,
                 cwd=cwd,
                 env=env,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
         except OSError as exc:
-            raise AiosError(E_TOOL, f"cannot start '{parts[0]}': {exc}") from None
+            raise AiosError(E_TOOL, f"cannot start '{label}': {exc}") from None
         comm = asyncio.create_task(proc.communicate())
         cwait = asyncio.create_task(cancel_event.wait()) if cancel_event is not None else None
         try:
@@ -463,7 +547,7 @@ class ToolManager:
             if cwait is not None and cwait in done:
                 self._kill_proc(proc)
                 await asyncio.wait({comm})
-                raise AiosError(E_ABORT, "shell.run: cancelled")
+                raise AiosError(E_ABORT, f"{label}: cancelled")
             if comm not in done:
                 self._kill_proc(proc)
                 await asyncio.wait({comm})

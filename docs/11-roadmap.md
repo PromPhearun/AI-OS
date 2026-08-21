@@ -170,7 +170,8 @@ covering fairness (10 heterogeneous agents — bounded starvation), throughput
 
 ## 7. Phase 5 — Hardening (detail)
 
-**Status: in progress** — Slice 5.0 (CI) and Slice 5.1 (at-rest encryption) are landed.
+**Status: in progress** — Slices 5.0 (CI), 5.1 (at-rest encryption), 5.2 (container sandbox), and
+5.4 (multi-kernel broker) are landed; 5.3 (OIDC) and the optional Rust hot paths remain.
 
 - [x] **5.0 CI + docs** — `.github/workflows/ci.yml` gates every push/PR:
       `compileall`, the full pytest suite (unit/integration/e2e), the acceptance benchmarks
@@ -180,9 +181,15 @@ covering fairness (10 heterogeneous agents — bounded starvation), throughput
       checkpoint snapshots (`snapshot.json`): `AIOS_MASTER_KEY` (hex/base64) wins over
       `AIOS_ENCRYPT=1` → `<data_root>/master.key` (0600, atomic); manifest hash covers the
       ciphertext + GCM auth, wrong key/tamper fails closed. Overhead: +36 B per snapshot.
-- [ ] Container sandbox profile (Docker/seccomp, network egress allowlist).
-- [ ] OIDC for humans; optional KMS for secrets.
-- [ ] Multi-kernel preview: two kernels sharing IPC through a broker behind the existing IPC API.
+- [x] **5.2 Container sandbox profile** — Docker/seccomp (`aios_kernel/modules/sandbox.py`):
+      read-only rootfs, `--cap-drop ALL`, `no-new-privileges`, seccomp default, workspace-only
+      mount, per-spec rlimits, and a network egress allowlist (`none` / `http` via
+      `AIOS_EGRESS_PROXY` / `all`). Daemon probe fails closed (`E_BUSY`); no host secrets reach
+      the container or the docker CLI process.
+- [ ] **5.3 OIDC for humans**; optional KMS for secrets.
+- [x] **5.4 Multi-kernel preview** — two kernels sharing IPC through a broker behind the existing
+      IPC API (`aios_kernel/modules/broker.py`: in-process `Broker` + token-authenticated
+      `BrokerServer`/`BrokerClient` TCP transport; cross-kernel send/publish, shared pid space).
 - [ ] Optional Rust hot paths (checkpoint serialization, scheduler core) — informed by Phase 4
       benchmarks; only where measured hot.
 

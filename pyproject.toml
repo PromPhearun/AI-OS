@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "aios"
 version = "0.1.0"
-description = "AI OS — LLM as OS, agents as apps. Phase 4: REST/WS control plane + web desktop + provider failover + benchmarks."
+description = "AI OS — LLM as OS, agents as apps. Phase 5 hardening: at-rest encryption, container sandbox, multi-kernel IPC broker."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }

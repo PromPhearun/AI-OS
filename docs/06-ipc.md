@@ -110,8 +110,10 @@ Agents are expected to treat messages as possibly re-delivered; the SDK exposes
 
 ## 9. Open Design Decisions (to resolve at implementation)
 
-1. **In-kernel bus vs. embedded message broker** — v1 uses an in-process bus (single kernel);
-   a future distributed kernel may swap in a broker behind the same IPC API.
+1. **In-kernel bus vs. embedded message broker** — v1 uses an in-process bus (single kernel).
+   **Resolved (Phase 5):** a multi-kernel broker (`aios_kernel/modules/broker.py`, §11) routes
+   IPC across kernels behind the same syscall API; event replay after a broker restart is not
+   provided in the preview.
 2. **Event replay** — do subscribers get missed events after a restart? Recommend: no replay in
    v1; state should come from shared pools/memory, not the event stream.
 3. **Group messaging** — multicast to all agents in a group (`send_msg` with `to_group`)
@@ -164,6 +166,35 @@ agent resumes to a faithful mailbox and subscription set (unit + crash-resume te
 checkpoint persistence), `tests/integration/test_ipc.py` (send/recv, filter, timeout,
 wake-on-send, reply trace, pub/sub, unsubscribe, join, handoff), and the e2e acceptance
 `A → handoff → B → result → A (join + recv)` in `tests/e2e/test_acceptance.py`.
+## 11. Multi-Kernel Broker (Phase 5, Slice 5.4)
+
+The multi-kernel preview lets two kernels share one IPC namespace so an agent on kernel A can
+`send_msg`/`publish` to an agent on kernel B behind the *existing* IPC syscalls — no agent-level
+API change. Implemented in `aios_kernel/modules/broker.py`:
+
+- **`Broker`** — in-process authority: a global pid registry (`pid → (kernel_id, group_id)`),
+  cross-kernel subscription fan-out, and per-kernel delivery callbacks. Pids come from one shared
+  space (`allocate_pid`), so kernel-local counters cannot collide. Fail-closed: unknown pids and
+  unknown kernels are never delivered to, and message bodies are never inspected — each kernel
+  re-applies its own permission + audit rules on arrival (`IPCManager._broker_deliver`).
+- **`BrokerServer` / `BrokerClient`** — optional TCP transport (newline-delimited JSON, loopback
+  by default) so kernels in separate processes share one broker. One connection == one kernel;
+  the first line must be `register`. The handshake is token-authenticated: `AIOS_BROKER_TOKEN`
+  (or an explicit `token=`). A server with no configured token rejects every client (fail
+  closed), a wrong token is refused, and a `kernel_id` already held by another connection is
+  rejected — no pid/delivery hijacking by a local process.
+- **Wiring** — `Kernel(broker=...)` attaches the manager; claims, releases, subscriptions, and
+  remote routing are mirrored through the broker while local semantics are unchanged. A socket
+  `BrokerClient` is auto-started by the kernel at construction. `join` across kernels is
+  rejected (`E_INVAL`); `recv_msg` and `join` remain local operations.
+
+**Tests:** `tests/unit/test_broker.py` — pid registry, fail-closed routing, cross-kernel pub/sub
+fan-out, socket transport + auth (wrong/missing token, token-less server, duplicate `kernel_id`),
+and two kernels wired over both the in-process broker and the token-protected socket broker.
+
+**Known preview limits:** event replay after a broker restart is not provided; the operator starts
+`BrokerServer` explicitly (it is not part of `aios serve`); restore-after-crash re-claims restored
+pids through the same `ipc.create` path.
 
 **Deferred from this slice:** milestone-checkpoint joins (v1 joins on `TERMINATED` only),
 event replay, group multicast, and the shell as an IPC peer.

@@ -91,6 +91,19 @@ Additional controls:
 - **No host secrets** — sandbox env is populated by the kernel from the vault per resolved
   `env.allowed_keys` only.
 
+**Container profile (Phase 5, implemented)** — `shell.run` for a spec declaring
+`sandbox.profile = "container"` is executed as `docker run` (`aios_kernel/modules/sandbox.py`):
+read-only root filesystem, every capability dropped (`--cap-drop ALL`), `no-new-privileges`,
+Docker's default seccomp filter, and a workspace-only mount (`/ws`) — no host paths are visible.
+Network is deny-by-default: `none` (no interface), `http` (bridge + CONNECT proxy from
+`AIOS_EGRESS_PROXY`; without it the profile fails closed `E_PERM`), or `all` (explicit opt-in).
+Resource limits (`sandbox.rlimits`) map to `--memory`, `--cpu-period`/`--cpu-quota`,
+`--pids-limit`; unknown keys are rejected (`E_INVAL`) rather than silently dropped. The daemon is
+probed once per kernel (`docker info`, 3 s timeout); a missing CLI or unreachable daemon fails
+closed (`E_BUSY`) — the call never degrades to an unsandboxed subprocess. Only granted vault keys
+enter the container as explicit `--env` flags; the docker CLI process itself runs with a minimal
+environment and never inherits `AIOS_*` secrets.
+
 ## 5. Secrets Management
 
 - **Vault indirection:** credentials live in an OS-managed vault (env/`~/.aios/credentials`
@@ -190,6 +203,10 @@ Defense in depth — no single layer is trusted:
 - [x] Sandbox escape test suite (path traversal, env leaks, network egress) passes.
       → `tests/integration/test_sandbox.py` (`test_path_traversal_rejected_at_call_tool`,
       `test_sandbox_env_does_not_leak_host_secrets`, `test_network_and_shell_binaries_not_allowlisted`).
+- [x] Container sandbox profile fails closed and never degrades to a subprocess.
+      → `tests/integration/test_sandbox.py::test_container_profile_fails_closed_without_daemon`,
+      `::test_container_profile_runs_via_docker_when_available`,
+      `::test_container_http_network_requires_egress_proxy`; `tests/unit/test_sandbox.py`.
 - [x] Audit log tampering detection test passes.
       → `tests/unit/test_audit_chain.py` (`test_tamper_detection_flips_a_byte`,
       `test_tamper_detection_finds_bad_hash_middle_of_chain`).

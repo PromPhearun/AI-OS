@@ -61,7 +61,7 @@ class AgentManager:
         validate_spec(spec)
         self.kernel.llm.validate_llm_spec(spec.get("llm", {}))
 
-        pid = self._allocate_pid()
+        pid = await self.kernel.ipc.allocate_pid() or self._allocate_pid()
         acb = AgentControlBlock(
             pid=pid,
             spec=spec,

@@ -80,7 +80,16 @@ build — green on every push/PR). Slice 5.1 ships **AES-256-GCM at-rest encrypt
 the secret vault and checkpoint snapshots: set `AIOS_MASTER_KEY` (64 hex chars or base64)
 or `AIOS_ENCRYPT=1` (auto-generates `<data_root>/master.key`, mode 0600) and data at rest
 is unreadable without the key — a wrong key or tampering fails closed
-(`aios_kernel/modules/crypto.py`).
+(`aios_kernel/modules/crypto.py`). Slice 5.2 ships the **container sandbox profile**
+(`aios_kernel/modules/sandbox.py`): a spec declaring `sandbox.profile = "container"` runs its
+allowlisted `shell.run` argv as `docker run` with a read-only rootfs, `--cap-drop ALL`,
+`no-new-privileges`, Docker's default seccomp, a workspace-only mount, per-spec rlimits, and a
+network egress allowlist (`none` / `http` via `AIOS_EGRESS_PROXY` / `all`) — a missing daemon
+fails closed (`E_BUSY`) and host secrets never reach the container or the docker CLI. Slice 5.4
+ships the **multi-kernel IPC broker** (`aios_kernel/modules/broker.py`, docs/06-ipc.md §11):
+two kernels share one broker behind the existing IPC API (global pid space, cross-kernel
+send/publish), over an in-process `Broker` or a token-authenticated TCP bridge
+(`BrokerServer`/`BrokerClient`, `AIOS_BROKER_TOKEN`).
 
 ## Quickstart
 
@@ -161,13 +170,13 @@ docs/11-roadmap.md   # how we'll build it
 
 ## Next Step
 
-**Phase 5 — Hardening is in progress.** CI now gates every push
-(`.github/workflows/ci.yml`: compileall, full pytest suite, acceptance benchmarks, web
-build), and AES-256-GCM at-rest encryption seals the vault and checkpoint snapshots behind
-`AIOS_MASTER_KEY` / `AIOS_ENCRYPT=1` — `366` tests pass. Remaining slices per
-[`docs/11-roadmap.md`](docs/11-roadmap.md): the container sandbox profile (network egress
-deny-by-default), OIDC + PKCE human auth, the multi-kernel IPC broker, and optional Rust
-hot paths informed by benchmarks.
+**Phase 5 — Hardening is in progress.** CI gates every push (`.github/workflows/ci.yml`:
+compileall, full pytest suite, acceptance benchmarks, web build), AES-256-GCM at-rest encryption
+seals the vault and checkpoint snapshots behind `AIOS_MASTER_KEY` / `AIOS_ENCRYPT=1`, and the
+container sandbox profile (Slice 5.2) plus the multi-kernel IPC broker (Slice 5.4) are
+implemented — `413` tests pass. Remaining slices per
+[`docs/11-roadmap.md`](docs/11-roadmap.md): OIDC + PKCE human auth and optional Rust hot paths
+informed by benchmarks.
 
 ---
 

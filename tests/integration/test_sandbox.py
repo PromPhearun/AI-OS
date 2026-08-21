@@ -132,3 +132,95 @@ async def test_tool_call_budget_precheck(kernel: Kernel, session) -> None:
     await sc.call_tool("fs.write", {"path": "a.txt", "content": "x"})
     with pytest.raises(AiosBudgetError):
         await sc.call_tool("fs.write", {"path": "b.txt", "content": "y"})
+
+
+# ---------------------------------------------------- container profile (5.2)
+CONTAINER_SPEC = _base_spec(
+    name="containerized",
+    sandbox={"profile": "container", "network": "none"},
+    capabilities={"tools": [{"name": "shell.run"}]},
+)
+
+
+@pytest.mark.asyncio
+async def test_container_profile_fails_closed_without_daemon(
+    kernel: Kernel, session, monkeypatch
+) -> None:
+    """A container-profile shell.run without a reachable daemon raises E_BUSY —
+    it never degrades to an unsandboxed subprocess (docs/08-security.md §4)."""
+    async def _no_daemon(*a, **k):
+        return False
+
+    monkeypatch.setattr(kernel.tools._docker_probe, "available", _no_daemon)
+    sc = await session(CONTAINER_SPEC)
+    with pytest.raises(AiosBusyError):
+        await sc.call_tool("shell.run", {"command": "echo hi"})
+
+
+@pytest.mark.asyncio
+async def test_container_profile_runs_via_docker_when_available(
+    kernel: Kernel, session, monkeypatch
+) -> None:
+    """With a reachable daemon the allowlisted argv is executed as ``docker run``
+    with the hardening flags; host secrets are never forwarded as env."""
+    kernel.vault.set("DB_READONLY_URL", "postgres://ro@db")
+    kernel.vault.set("DB_ADMIN_URL", "postgres://admin@db")
+    spec = _base_spec(
+        name="containerized-net",
+        sandbox={"profile": "container", "network": "none"},
+        env={"allowed_keys": ["DB_READONLY_URL"]},
+        capabilities={"tools": [{"name": "shell.run"}]},
+    )
+    captured: dict = {}
+
+    async def _fake_run(argv, *, env, cwd, timeout, cancel_event, label):
+        captured["argv"] = list(argv)
+        captured["env"] = dict(env)
+        captured["cwd"] = cwd
+        return {"code": 0, "stdout": "hello from container\n", "stderr": ""}
+
+    async def _daemon_ok(*a, **k):
+        return True
+
+    monkeypatch.setattr(kernel.tools._docker_probe, "available", _daemon_ok)
+    monkeypatch.setattr(kernel.tools, "_run_process", _fake_run)
+    sc = await session(spec)
+
+    result = await sc.call_tool("shell.run", {"command": "echo hello"})
+    assert result["result"]["stdout"] == "hello from container\n"
+
+    argv = captured["argv"]
+    assert argv[:2] == ["docker", "run"]
+    assert argv[argv.index("--network") + 1] == "none"
+    assert "--read-only" in argv
+    assert argv[argv.index("--cap-drop") + 1] == "ALL"
+    assert argv[argv.index("-w") + 1] == "/ws"
+    assert argv[-3:] == [kernel.tools._sandbox_image, "echo", "hello"]
+    env_flags = " ".join(argv)
+    assert "DB_READONLY_URL=postgres://ro@db" in env_flags
+    assert "DB_ADMIN_URL" not in env_flags
+    # the docker CLI process env is minimal and never carries host secrets
+    assert "DB_ADMIN_URL" not in captured["env"]
+    assert "AIOS_WORKSPACE=/ws" in env_flags
+
+
+@pytest.mark.asyncio
+async def test_container_http_network_requires_egress_proxy(
+    kernel: Kernel, session, monkeypatch
+) -> None:
+    """network=http without AIOS_EGRESS_PROXY fails closed (E_PERM): an egress
+    allowlist cannot be enforced without a filtering proxy."""
+    monkeypatch.delenv("AIOS_EGRESS_PROXY", raising=False)
+
+    async def _daemon_ok(*a, **k):
+        return True
+
+    monkeypatch.setattr(kernel.tools._docker_probe, "available", _daemon_ok)
+    spec = _base_spec(
+        name="containerized-http",
+        sandbox={"profile": "container", "network": "http"},
+        capabilities={"tools": [{"name": "shell.run"}]},
+    )
+    sc = await session(spec)
+    with pytest.raises(AiosPermissionError):
+        await sc.call_tool("shell.run", {"command": "echo hi"})

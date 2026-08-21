@@ -20,6 +20,7 @@ Ownership map (docs/02-kernel.md §2):
 from __future__ import annotations
 
 import asyncio
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -52,6 +53,8 @@ class Kernel:
         workspace_root: str | None = None,
         data_root: str | None = None,
         env: dict[str, str] | None = None,
+        kernel_id: str | None = None,
+        broker=None,
         start: bool = True,
     ):
         """data_root points audit/workspaces/checkpoints/session at one directory
@@ -61,8 +64,13 @@ class Kernel:
         ``llm_backends`` registers a provider map for failover (Phase 4): a
         dict keyed by provider name; ``llm_backend`` (single backend) is still
         accepted and registered under its own provider name.
+
+        ``kernel_id`` names this instance (defaults to a fresh id); ``broker``
+        is an optional multi-kernel IPC broker (modules/broker.py) so agents on
+        other kernels are routable IPC peers (docs/06-ipc.md §11).
         """
         self.data_root = Path(data_root) if data_root else None
+        self.kernel_id = kernel_id or f"kernel-{uuid.uuid4().hex[:8]}"
         # At-rest cipher: AES-256-GCM for credentials.json + checkpoint
         # snapshots (AIOS_MASTER_KEY / AIOS_ENCRYPT=1, see modules/crypto.py).
         self.crypto = cipher_for(self.data_root)
@@ -92,7 +100,27 @@ class Kernel:
         self.tools = ToolManager(self)
         self.mcp = MCPRegistry(self)
         self.fs = SemanticFS(self)
-        self.ipc = IPCManager(self)
+        self.ipc = IPCManager(self, broker=broker)
+        self._broker = broker
+        self._broker_client_task: asyncio.Task | None = None
+        if broker is not None and hasattr(broker, "start"):
+            # A socket BrokerClient must connect before ops are written; the
+            # in-process Broker has no start() and needs nothing. Start the
+            # client in the background (kernel construction runs inside an async
+            # context in tests and the CLI). If the connection fails, the client
+            # marks itself broken and the first op raises ConnectionError.
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                pass  # constructed outside a loop: ops fail closed later
+            else:
+                async def _boot() -> None:
+                    try:
+                        await broker.start()
+                    except Exception:
+                        pass  # fail closed: the client is already marked broken
+
+                self._broker_client_task = asyncio.create_task(_boot())
         self.agent_manager = AgentManager(self)
         self.scheduler = Scheduler(self)
         self.agent_logs: dict[int, list[dict]] = {}
@@ -121,6 +149,13 @@ class Kernel:
     # ------------------------------------------------------------ lifecycle
     async def shutdown(self) -> None:
         """Terminate all agents and close audit; call once per Kernel."""
+        if self._broker_client_task is not None:
+            self._broker_client_task.cancel()
+        if self._broker is not None and hasattr(self._broker, "stop"):
+            try:
+                await self._broker.stop()
+            except Exception:
+                pass
         self.agent_manager.shutdown_all(reason="kernel shutdown")
         await asyncio.sleep(0)  # let cancelled tasks unwind
         self.audit.close()

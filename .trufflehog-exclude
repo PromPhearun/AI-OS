@@ -1,0 +1,10 @@
+# TruffleHog allowlist (gitignore-style path patterns), wired into the
+# repo-local pre-commit hook (.githooks/pre-commit) via --exclude-paths.
+#
+# tests/unit/test_sandbox.py embeds credentials inside a proxy URL as a NEGATIVE
+# security-test fixture: ContainerCommand must REJECT proxy URLs that carry
+# credentials (see aios_kernel/modules/sandbox.py `_validate_proxy`). The URI
+# detector flags that fixture as a potential secret; this entry excludes only the
+# single test module that exercises it. The scan of everything else still fails
+# closed on any finding.
+tests/unit/test_sandbox.py
