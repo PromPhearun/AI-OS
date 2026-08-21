@@ -2,7 +2,7 @@
 
 ``create_app`` wires a running :class:`aios_kernel.Kernel` into a FastAPI app:
 
-* JWT auth (API keys for humans, JWT for the web desktop)
+* JWT auth (API keys or OIDC/PKCE for humans, JWT for the web desktop)
 * rate limiting on every HTTP endpoint (sliding window)
 * strict CORS + security headers
 * a kernel-audited request log (credentials never recorded)
@@ -28,6 +28,7 @@ from aios_kernel import Kernel
 
 from .auth import AuthManager, parse_api_keys_env
 from .errors import register_exception_handlers
+from .oidc import OidcClient, OidcConfig
 from .routes import router
 from .security import (
     DEFAULT_CORS_ORIGINS,
@@ -63,18 +64,29 @@ def create_app(
     rate_window_s: float = 60.0,
     cors_origins: str | None = None,
     shutdown_on_exit: bool = False,
+    oidc_client: OidcClient | None = None,
 ) -> FastAPI:
     """Build the control-plane app around a live kernel.
 
     ``agents_module`` names the module whose ``@agent`` definitions back
     ``POST /v1/agents`` (imported at startup). ``shutdown_on_exit`` shuts the
     kernel down when the app lifespan exits (used by ``aios serve``).
+    ``oidc_client`` injects an OIDC client (tests); by default one is built
+    from the ``AIOS_OIDC_*`` environment when configured.
     """
     api_keys = parse_api_keys_env(os.environ.get("AIOS_API_KEYS"))
     auth = AuthManager(api_keys, jwt_ttl_s=jwt_ttl_s)
     limiter = RateLimiter(limit=rate_limit, window_s=rate_window_s)
     raw_origins = cors_origins or os.environ.get("AIOS_CORS_ORIGINS") or DEFAULT_CORS_ORIGINS
     origins = [o.strip() for o in raw_origins.split(",") if o.strip()]
+
+    if oidc_client is None:
+        try:
+            oidc_config = OidcConfig.from_env()
+            oidc_client = OidcClient(oidc_config) if oidc_config.enabled else None
+        except ValueError as exc:
+            logger.error("OIDC disabled — invalid AIOS_OIDC_* configuration: %s", exc)
+            oidc_client = None
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -88,6 +100,13 @@ def create_app(
             logger.warning(
                 "AIOS_JWT_SECRET unset — ephemeral secret generated (tokens invalid after restart)"
             )
+        if oidc_client is not None:
+            logger.info("OIDC enabled (issuer=%s)", oidc_client.config.issuer)
+            if not oidc_client.config.admin_emails and not oidc_client.config.operator_values:
+                logger.warning(
+                    "OIDC enabled with no AIOS_OIDC_ADMIN_EMAILS / AIOS_OIDC_OPERATOR_VALUES — "
+                    "every authenticated OIDC user receives the operator role"
+                )
         yield
         if shutdown_on_exit:
             await kernel.shutdown()
@@ -103,11 +122,13 @@ def create_app(
     app.state.kernel = kernel
     app.state.auth = auth
     app.state.limiter = limiter
+    app.state.oidc = oidc_client
     app.state.config = {
         "rate_limit": rate_limit,
         "rate_window_s": rate_window_s,
         "jwt_ttl_s": jwt_ttl_s,
         "cors_origins": origins,
+        "oidc_issuer": oidc_client.config.issuer if oidc_client else None,
     }
 
     # Middleware order: last added runs first. Audit outermost so rate-limit

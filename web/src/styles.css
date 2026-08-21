@@ -347,6 +347,33 @@ textarea {
   margin: 0;
 }
 
+.login .sso {
+  background: none;
+  border-color: var(--accent-2);
+  color: var(--accent-2);
+}
+
+.login .sso:hover:not(:disabled) {
+  background: rgba(163, 113, 247, 0.12);
+}
+
+.login-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 11px;
+  margin: 2px 0;
+}
+
+.login-divider::before,
+.login-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
 .muted {
   color: var(--muted);
 }

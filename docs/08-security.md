@@ -34,7 +34,7 @@ is untrusted. We comply with OWASP Top 10 / CWE Top 25 principles adapted to an 
 ## 2. RBAC & Identities
 
 ### Identities
-- **Users** (operators) — authenticate via API key or OIDC (v1.5).
+- **Users** (operators) — authenticate via API key or OIDC (Phase 5).
 - **Agents** — authenticated by the kernel via `agent_id = pid` + runtime attestation of the
   SDK channel (in-process: trusted; out-of-process: TLS + token bound to the sandbox).
 - **Tool servers** — registered with a client credential; verified at boot.
@@ -216,6 +216,13 @@ Defense in depth — no single layer is trusted:
 - [x] Injection probe suite: tool outputs containing "ignore previous instructions" do not
       change tool grant behavior.
       → `tests/integration/test_mcp.py::test_injection_output_does_not_change_tool_grants`.
+- [x] OIDC login fails closed: PKCE is enforced at the provider (verifier mismatch → 400), ID
+      tokens with `alg=none` / symmetric `HS*` / tampered signatures / wrong issuer / audience /
+      expiry / nonce are rejected, states and grants are single-use (replay → 400/401), the
+      grant cookie is HttpOnly + SameSite=Lax + path-scoped + hash-at-rest, role mapping is
+      deny-by-default (unverified emails never reach `operator`), and no code/verifier/grant
+      ever reaches the audit log.
+      → `tests/unit/test_oidc.py`, `tests/integration/test_oidc_api.py`.
 
 ## 13. Open Design Decisions (to resolve at implementation)
 
@@ -223,7 +230,10 @@ Defense in depth — no single layer is trusted:
    `container` for declared high-risk tools. **Resolved (Phase 3):** subprocess is the default
    (`get_sandbox` returns `profile: subprocess`); in-process execution is opt-in per tool via
    `sandbox: "inprocess"`.
-2. **OIDC for human auth** — v1 API keys + CLI; OIDC in v1.5.
+2. **OIDC for human auth** — **Resolved (Slice 5.3):** authorization-code + PKCE against any
+   standards-compliant OIDC provider (`aios_api/oidc.py`), with server-side single-use PKCE
+   transactions, JWKS-verified ID tokens, a one-time HttpOnly grant cookie, and deny-by-default
+   role mapping; API keys remain for headless/CLI use.
 3. **At-rest encryption** — **Resolved (Phase 5):** AES-256-GCM is implemented for the vault
    and checkpoint snapshots behind `AIOS_MASTER_KEY` / `AIOS_ENCRYPT=1`; KMS integration stays
    a deployment option, not a code dependency.

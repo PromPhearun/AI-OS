@@ -24,6 +24,20 @@ The desktop exchanges an operator API key for a short-lived JWT
 With no `AIOS_API_KEYS` set, `aios serve` enables the dev key `dev-key`
 (operator role) — sign in with it in the browser.
 
+### Single sign-on (OIDC + PKCE, Slice 5.3)
+
+When the control plane is configured with `AIOS_OIDC_ISSUER` +
+`AIOS_OIDC_CLIENT_ID`, the login card shows a **Sign in with SSO** button. The
+desktop asks the control plane for the provider's authorization URL, the human
+completes the IdP consent, and the control plane's callback sets a one-time
+HttpOnly grant cookie (path-scoped to `/v1/auth/oidc`) before redirecting back
+to the web shell. On mount the desktop auto-exchanges that grant for a normal
+JWT exactly once per page load (`POST /v1/auth/oidc/session`).
+
+Dev tip: with `npm run dev` the IdP must be configured with
+`AIOS_OIDC_REDIRECT_URI=http://localhost:5173/v1/auth/oidc/callback` (the Vite
+proxy does not rewrite `Host`).
+
 ## Development
 
 ```sh

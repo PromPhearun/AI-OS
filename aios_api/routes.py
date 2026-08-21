@@ -7,9 +7,11 @@ Every endpoint is rate-limited by middleware, audited by the
 
 from __future__ import annotations
 
+import os
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
 from aios_kernel.errors import AiosError, E_NOENT
@@ -17,6 +19,7 @@ from aios_sdk.agent import AGENT_REGISTRY, AgentRunner
 
 from .auth import Principal
 from .deps import get_kernel, require_auth, require_operator
+from .oidc import GRANT_COOKIE, GRANT_TTL_S, OidcClient, OidcError
 
 router = APIRouter()
 
@@ -100,6 +103,118 @@ async def issue_token(req: TokenRequest, request: Request):
         "role": principal.role,
         "name": principal.name,
     }
+
+
+# ------------------------------------------------------------------ oidc
+def _cookie_secure(request: Request) -> bool:
+    """HTTPS only, unless AIOS_COOKIE_SECURE explicitly overrides (dev http)."""
+    if os.environ.get("AIOS_COOKIE_SECURE", "").lower() in ("1", "true", "yes"):
+        return True
+    return request.url.scheme == "https"
+
+
+def _oidc_client(request: Request) -> OidcClient:
+    oidc = getattr(request.app.state, "oidc", None)
+    if oidc is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": {"code": "E_NOENT", "message": "OIDC is not configured"}},
+        )
+    return oidc
+
+
+@router.get("/v1/auth/oidc")
+async def oidc_status(request: Request):
+    """OIDC availability + issuer for the web desktop (public, no auth)."""
+    oidc = getattr(request.app.state, "oidc", None)
+    if oidc is None:
+        return {"enabled": False}
+    return {"enabled": True, "issuer": oidc.config.issuer}
+
+
+@router.post("/v1/auth/oidc/authorize")
+async def oidc_authorize(request: Request):
+    """Start the PKCE flow; returns the provider's authorization URL.
+
+    The verifier/state/nonce are held server-side in a single-use, expiring
+    store; the human is expected to be redirected to ``authorize_url`` from
+    the web desktop (full top-level navigation, never an iframe).
+    """
+    oidc = _oidc_client(request)
+    redirect_uri = oidc.redirect_uri_for(request)
+    authorize_url = await oidc.start_authorization(redirect_uri)
+    return {"authorize_url": authorize_url, "redirect_uri": redirect_uri}
+
+
+@router.get("/v1/auth/oidc/callback", name="oidc_callback")
+async def oidc_callback(
+    request: Request,
+    code: str = Query(min_length=1, max_length=512),
+    state: str = Query(min_length=1, max_length=256),
+):
+    """Provider redirect target: exchange the code, verify the ID token.
+
+    On success the resolved Principal is handed to the browser as a short-lived,
+    one-time, HttpOnly grant cookie and the browser is redirected to the web
+    shell, which exchanges the grant for a normal aios JWT. Query parameters
+    are never audited (the audit middleware records paths only).
+    """
+    oidc = _oidc_client(request)
+    redirect_uri = oidc.redirect_uri_for(request)
+    try:
+        principal = await oidc.complete_authorization(
+            code=code, state=state, redirect_uri=redirect_uri
+        )
+    except OidcError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.to_result()) from exc
+    request.state.principal = principal
+    grant = oidc.store.issue_grant(principal)
+    resp = RedirectResponse(url=oidc.config.post_login_path, status_code=302)
+    resp.set_cookie(
+        GRANT_COOKIE,
+        grant,
+        max_age=int(GRANT_TTL_S),
+        path="/v1/auth/oidc",
+        httponly=True,
+        samesite="lax",
+        secure=_cookie_secure(request),
+    )
+    return resp
+
+
+@router.post("/v1/auth/oidc/session")
+async def oidc_session(request: Request):
+    """Consume the one-time grant cookie and return a normal aios JWT.
+
+    Single-use and TTL-limited: a stolen cookie cannot be replayed. The cookie
+    is deleted on both success and failure paths.
+    """
+    oidc = getattr(request.app.state, "oidc", None)
+    grant = request.cookies.get(GRANT_COOKIE)
+    if oidc is None or not grant:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"error": {"code": "E_PERM", "message": "no OIDC session grant"}},
+        )
+    principal = oidc.store.consume_grant(grant)
+    if principal is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"error": {"code": "E_PERM", "message": "OIDC session grant invalid or expired"}},
+        )
+    request.state.principal = principal
+    token = request.app.state.auth.issue_token(principal)
+    resp = JSONResponse(
+        {
+            "access_token": token,
+            "token_type": "bearer",
+            "expires_in": request.app.state.auth._jwt_ttl_s,
+            "role": principal.role,
+            "name": principal.name,
+        }
+    )
+    resp.delete_cookie(GRANT_COOKIE, path="/v1/auth/oidc")
+    return resp
 
 
 # ------------------------------------------------------------------ agents

@@ -34,6 +34,16 @@ export interface TokenResponse extends Principal {
   expires_in: number;
 }
 
+export interface OidcStatus {
+  enabled: boolean;
+  issuer?: string;
+}
+
+export interface OidcAuthorizeResult {
+  authorize_url: string;
+  redirect_uri: string;
+}
+
 export class Api {
   private token: string | null = null;
 
@@ -108,6 +118,25 @@ export class Api {
 
   login(apiKey: string): Promise<TokenResponse> {
     return this.request("POST", "/v1/auth/token", { api_key: apiKey });
+  }
+
+  // ------------------------------------------------------------------ oidc
+  /** OIDC availability (public; no token needed). */
+  oidcStatus(): Promise<OidcStatus> {
+    return this.request("GET", "/v1/auth/oidc");
+  }
+
+  /** Start the PKCE flow; returns the provider URL to navigate to. */
+  oidcAuthorize(): Promise<OidcAuthorizeResult> {
+    return this.request("POST", "/v1/auth/oidc/authorize");
+  }
+
+  /**
+   * Exchange the one-time post-login grant cookie (HttpOnly, set by the
+   * callback after the IdP redirect) for a normal aios JWT.
+   */
+  oidcSession(): Promise<TokenResponse> {
+    return this.request("POST", "/v1/auth/oidc/session");
   }
 
   // ------------------------------------------------------------- agents
